@@ -226,6 +226,10 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
   .cal-month-head h2 { font-size: 12px; }
   .cal-bp-note { font-size: 8px; }
   .now-line { font-size: 10px; }
+  /* iOS auto-zooms any focused field with text < 16px — pin them all to 16px */
+  textarea, input[type="text"], input[type="date"], input[type="time"], input[type="file"], select {
+    font-size: 16px !important;
+  }
 }
 
 </style>
@@ -234,7 +238,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<script type="application/json" id="build-info">{"built":"2026-08-19T22:00:25.600Z","shell":true}</script>
+<script type="application/json" id="build-info">{"built":"2026-08-19T22:07:22.235Z","shell":true}</script>
 <script type="application/json" id="data-legs">[]</script>
 <script type="application/json" id="data-days">[]</script>
 <script type="application/json" id="data-months">[]</script>
@@ -245,6 +249,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 <header class="app-head">
   <h1>ROLLING THUNDER</h1>
   <span class="sub">FAR 117.23(b)(1) · 100:00 / 672:00 · display TZ America/New_York</span>
+  <span class="sub" id="build-stamp"></span>
   <span id="overlay-flag"></span>
   <span class="spacer"></span>
   <button class="btn" id="export-btn">Export offline .html</button>
@@ -2390,6 +2395,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     window.Scorecard.render($('scorecard-host'), store.months, { onClose: closeMonth });
     renderEditors();
     $('overlay-flag').textContent = overlayActive ? '● local edits active' : (staleOverlayNote || '');
+    $('build-stamp').textContent = 'build ' + buildId().replace(/\.\d+Z$/, 'Z').replace('T', ' ');
   }
 
   async function boot() {
