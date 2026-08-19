@@ -206,9 +206,26 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 }
 .editor-row { display: flex; gap: 10px; align-items: center; margin-top: 4px; }
 
+/* Phone portrait: always show the full 7-day week — cards compress instead of scrolling */
 @media (max-width: 760px) {
   body { font-size: 12px; }
   .tab-panel { padding: 10px 8px 40px; }
+  .cal-grid { min-width: 0; gap: 2px; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .day-card { min-height: 88px; border-radius: 3px; }
+  .rail { width: 5px; }
+  .rail-seg.hairline { border-top-width: 1px; }
+  .day-body { padding: 2px 3px 4px; min-width: 0; }
+  .day-top { gap: 2px; }
+  .day-num { font-size: 10px; }
+  .day-badge { font-size: 6px; padding: 0 2px; letter-spacing: 0; }
+  .day-label { font-size: 5.5px; letter-spacing: 0.06em; margin: 2px 0 0; }
+  .seg-fig { font-size: 10.5px; text-shadow: 0 1px 1px rgba(0,0,0,0.5); }
+  .seg-ev { font-size: 6.5px; line-height: 1.25; word-break: break-word; }
+  .day-note { display: none; }
+  .cal-dow { font-size: 8px; }
+  .cal-month-head h2 { font-size: 12px; }
+  .cal-bp-note { font-size: 8px; }
+  .now-line { font-size: 10px; }
 }
 
 </style>
@@ -217,7 +234,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<script type="application/json" id="build-info">{"built":"2026-08-19T21:17:32.559Z","shell":true}</script>
+<script type="application/json" id="build-info">{"built":"2026-08-19T21:49:46.561Z","shell":true}</script>
 <script type="application/json" id="data-legs">[]</script>
 <script type="application/json" id="data-days">[]</script>
 <script type="application/json" id="data-months">[]</script>
