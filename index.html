@@ -1,0 +1,2409 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ROLLING THUNDER — 117.23 Headroom</title>
+<style>
+/* ROLLING THUNDER — styles.css
+ * Monospace throughout (IBM Plex Mono when installed; Menlo fallback keeps
+ * the offline artifact network-free). Tabular figures. HH:MM everywhere. */
+:root {
+  --bg: #0F1115;
+  --panel: #171B22;
+  --card-untyped: #1E232C;
+  --ink: #E8EAF0;
+  --ink-dim: #9AA3B2;
+  --navy: #1B3E77;
+  --lblue: #6FBCDE;
+  --tan: #8B7C4E;
+  --red: #D1352B;
+  --orange: #E07B2C;
+  --yellow: #E5C33C;
+  --green: #3E9E6B;
+  --hairline: rgba(255, 255, 255, 0.9);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+/* ---- chrome ---- */
+.app-head {
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  padding: 12px 16px 8px;
+}
+.app-head h1 { font-size: 16px; margin: 0; letter-spacing: 0.08em; }
+.app-head .sub { color: var(--ink-dim); font-size: 11px; }
+#overlay-flag { color: var(--yellow); font-size: 11px; }
+.app-head .spacer { flex: 1; }
+
+#sanity-banner {
+  display: none;
+  background: var(--red); color: #fff;
+  padding: 10px 16px; font-size: 12px;
+}
+#sanity-banner.active { display: block; }
+
+.tab-bar { display: flex; gap: 4px; padding: 0 16px; border-bottom: 1px solid #2A3040; }
+.tab-btn {
+  background: none; border: none; color: var(--ink-dim);
+  font: inherit; padding: 8px 12px; cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.tab-btn.on { color: var(--ink); border-bottom-color: var(--lblue); }
+.tab-panel { display: none; padding: 12px 16px 48px; }
+.tab-panel.active { display: block; }
+
+.btn {
+  background: #232A36; color: var(--ink); border: 1px solid #3A4356;
+  font: inherit; font-size: 12px; padding: 6px 12px; border-radius: 4px; cursor: pointer;
+}
+.btn:hover { background: #2C3444; }
+.btn.danger { border-color: var(--red); color: #F0A9A3; }
+
+/* ---- calendar ---- */
+.now-line { font-size: 12px; margin: 4px 0 10px; letter-spacing: 0.04em; }
+#month-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
+.chip {
+  background: #1C2230; border: 1px solid #313A4D; color: var(--ink-dim);
+  font: inherit; font-size: 11px; padding: 3px 10px; border-radius: 12px; cursor: pointer;
+}
+.chip.on { color: var(--ink); border-color: var(--lblue); background: #1E2A3E; }
+
+.cal-month { margin: 14px 0 26px; }
+.cal-month-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+.cal-month-head h2 { font-size: 14px; margin: 0; letter-spacing: 0.06em; }
+.cal-bp-note { color: var(--ink-dim); font-size: 11px; }
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(96px, 1fr));
+  gap: 4px;
+  min-width: 720px; /* seven columns hold; page scrolls horizontally on phones */
+}
+.cal-scroll { overflow-x: auto; }
+.cal-dow { text-align: center; color: var(--ink-dim); font-size: 10px; padding: 2px 0; }
+.cal-filler { min-height: 10px; }
+
+.day-card {
+  display: flex;
+  background: var(--card-untyped);
+  border-radius: 4px;
+  overflow: hidden;
+  min-height: 118px;
+  color: #10141C;
+}
+.day-card.untyped { color: var(--ink-dim); }
+.day-card.on-navy { color: #EDF1F8; }
+.day-card.today { outline: 2px solid #fff; outline-offset: -2px; }
+
+/* left rail: 24h clock, 0000 top → 2400 bottom, split at event minutes */
+.rail { display: flex; flex-direction: column; width: 9px; flex-shrink: 0; }
+.rail-seg { flex-basis: 0; min-height: 2px; }
+.rail-seg.hairline { border-top: 1.5px solid var(--hairline); }
+
+.day-body { padding: 5px 6px 6px; flex: 1; min-width: 0; }
+.day-top { display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
+.day-num { font-size: 13px; font-weight: 700; }
+.day-badge {
+  font-size: 9px; font-weight: 700; letter-spacing: 0.05em;
+  background: rgba(0, 0, 0, 0.28); color: #fff;
+  padding: 1px 4px; border-radius: 3px;
+}
+.day-card.untyped .day-badge { background: #2A3140; }
+.day-badge.overlay { background: rgba(0, 0, 0, 0.15); color: inherit; }
+.day-badge.bp-tag { background: var(--yellow); color: #10141C; }
+.day-label { font-size: 8.5px; letter-spacing: 0.12em; opacity: 0.75; margin: 3px 0 1px; }
+.day-stack { display: flex; flex-direction: column; }
+.seg-fig {
+  font-size: 14px; font-weight: 700; letter-spacing: 0.02em;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.55);
+}
+.seg-ev { font-size: 9px; opacity: 0.9; padding: 1px 0; }
+.day-note { font-size: 9px; opacity: 0.8; margin-top: 3px; }
+
+.legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; color: var(--ink-dim); font-size: 11px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.legend .gap { width: 12px; }
+
+/* ---- scorecard ---- */
+.sc-hero { background: var(--panel); border-radius: 6px; padding: 14px 18px; margin: 8px 0 20px; }
+.sc-hero-label { color: var(--ink-dim); font-size: 11px; letter-spacing: 0.1em; margin-bottom: 8px; }
+.sc-hero-line { display: flex; gap: 28px; }
+.sc-hero-num { font-size: 30px; font-weight: 700; }
+.sc-hero-cap { color: var(--ink-dim); font-size: 11px; letter-spacing: 0.15em; text-align: center; }
+.sc-hero-bench { color: var(--ink-dim); font-size: 10px; margin-top: 8px; }
+
+.sc-season { margin-bottom: 24px; }
+.sc-season h3 { font-size: 12px; letter-spacing: 0.1em; color: var(--ink-dim); margin: 0 0 6px; }
+.sc-table { border-collapse: collapse; width: 100%; max-width: 640px; }
+.sc-table th {
+  text-align: left; font-size: 10px; letter-spacing: 0.1em; color: var(--ink-dim);
+  border-bottom: 1px solid #2A3040; padding: 4px 10px 4px 0; font-weight: 400;
+}
+.sc-table td { padding: 4px 10px 4px 0; border-bottom: 1px solid #1C212B; }
+.sc-month { color: var(--ink-dim); white-space: nowrap; }
+.sc-num { font-weight: 700; white-space: nowrap; }
+.sc-best { color: var(--green); }
+.sc-note { color: var(--ink-dim); font-size: 10px; }
+.sc-excl { color: #6B7383; font-style: italic; }
+tr.provisional .sc-num { font-style: italic; color: var(--yellow); }
+tr.provisional .sc-num.sc-best { color: var(--yellow); }
+.prov-num { font-style: italic; color: var(--yellow); }
+tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--lblue); }
+.sc-close { font-size: 10px; padding: 2px 8px; margin-left: 8px; }
+
+/* ---- trip sizer ---- */
+#paste-in {
+  width: 100%; max-width: 760px; height: 220px;
+  background: var(--panel); color: var(--ink); border: 1px solid #2A3040;
+  font: inherit; font-size: 11px; padding: 8px; border-radius: 4px;
+  white-space: pre; overflow-x: auto;
+}
+#sizer-in {
+  width: 100%; max-width: 640px; height: 110px;
+  background: var(--panel); color: var(--ink); border: 1px solid #2A3040;
+  font: inherit; font-size: 12px; padding: 8px; border-radius: 4px;
+}
+.sizer-help { color: var(--ink-dim); font-size: 11px; margin: 6px 0 10px; }
+.sizer-verdict { font-size: 18px; font-weight: 700; margin: 12px 0 4px; }
+.sizer-verdict.clean { color: var(--green); }
+.sizer-verdict.buffer { color: var(--yellow); }
+.sizer-verdict.blgt { color: var(--red); }
+.sizer-note { color: var(--ink-dim); font-size: 11px; max-width: 640px; margin-bottom: 10px; }
+.sizer-err { color: var(--red); margin-top: 10px; }
+.sizer-table { border-collapse: collapse; }
+.sizer-table th { text-align: left; font-size: 10px; color: var(--ink-dim); padding: 3px 14px 3px 0; font-weight: 400; }
+.sizer-table td { padding: 3px 14px 3px 0; border-top: 1px solid #1C212B; }
+.sizer-table .peak-row td { color: var(--yellow); font-weight: 700; }
+
+/* ---- data entry ---- */
+.leg-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; max-width: 720px; }
+.leg-form label { display: flex; flex-direction: column; gap: 3px; font-size: 10px; color: var(--ink-dim); letter-spacing: 0.06em; }
+.leg-form input[type="text"], .leg-form input[type="date"], .leg-form input[type="time"] {
+  background: var(--panel); color: var(--ink); border: 1px solid #2A3040;
+  font: inherit; font-size: 12px; padding: 6px; border-radius: 4px;
+}
+.leg-form .checks { flex-direction: row; align-items: center; gap: 6px; font-size: 11px; }
+.form-note { color: var(--ink-dim); font-size: 11px; max-width: 720px; margin: 8px 0; }
+.form-msg { font-size: 11px; }
+.form-msg.ok { color: var(--green); }
+.form-msg.err { color: var(--red); }
+
+.editor { margin: 16px 0; }
+.editor h3 { font-size: 12px; color: var(--ink-dim); margin: 0 0 4px; }
+.editor textarea {
+  width: 100%; height: 180px;
+  background: var(--panel); color: var(--ink); border: 1px solid #2A3040;
+  font: inherit; font-size: 11px; padding: 8px; border-radius: 4px;
+}
+.editor-row { display: flex; gap: 10px; align-items: center; margin-top: 4px; }
+
+@media (max-width: 760px) {
+  body { font-size: 12px; }
+  .tab-panel { padding: 10px 8px 40px; }
+}
+
+</style>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0F1115">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<script type="application/json" id="build-info">{"built":"2026-08-19T21:17:32.559Z","shell":true}</script>
+<script type="application/json" id="data-legs">[]</script>
+<script type="application/json" id="data-days">[]</script>
+<script type="application/json" id="data-months">[]</script>
+<script type="application/json" id="data-bid_periods">[{"bid_period":"2025-12","start":"2025-12-01","end":"2025-12-31"},{"bid_period":"2026-01","start":"2026-01-01","end":"2026-01-31"},{"bid_period":"2026-02","start":"2026-02-01","end":"2026-03-01"},{"bid_period":"2026-03","start":"2026-03-02","end":"2026-03-31"},{"bid_period":"2026-04","start":"2026-04-01","end":"2026-05-01"},{"bid_period":"2026-05","start":"2026-05-02","end":"2026-06-01"},{"bid_period":"2026-06","start":"2026-06-02","end":"2026-07-01"},{"bid_period":"2026-07","start":"2026-07-02","end":"2026-07-31"},{"bid_period":"2026-08","start":"2026-08-01","end":"2026-08-30"},{"bid_period":"2026-09","start":"2026-08-31","end":"2026-09-30","alv_minutes":4884,"guarantee_minutes":4764,"note":"31 days. ALV 81:24 → guarantee 79:24. Award posted 17 Aug; day types beyond 31 Aug pending capture."}]</script>
+</head>
+<body>
+<div id="sanity-banner"></div>
+<header class="app-head">
+  <h1>ROLLING THUNDER</h1>
+  <span class="sub">FAR 117.23(b)(1) · 100:00 / 672:00 · display TZ America/New_York</span>
+  <span id="overlay-flag"></span>
+  <span class="spacer"></span>
+  <button class="btn" id="export-btn">Export offline .html</button>
+</header>
+<nav class="tab-bar">
+  <button class="tab-btn" data-tab="calendar">CALENDAR</button>
+  <button class="tab-btn" data-tab="paste">PASTE</button>
+  <button class="tab-btn" data-tab="scorecard">PAY·O·D</button>
+  <button class="tab-btn" data-tab="sizer">TRIP SIZER</button>
+  <button class="tab-btn" data-tab="data">DATA</button>
+</nav>
+
+<section class="tab-panel" id="tab-paste">
+  <h3>Paste from iCrew</h3>
+  <p class="form-note">Copy the whole screen as text from iCrew and paste it below — the app detects which
+  screen it is. Supported: <b>Current Schedule</b> (day types + bid period) · <b>Time Card</b> (scorecard
+  inputs + flight-log audit) · <b>Pay Statement</b> (PAY metric; FINAL closes the month) ·
+  <b>Rotation print</b> (flight-by-flight legs → headroom). Nothing is saved until you press Apply.</p>
+  <textarea id="paste-in" placeholder="                           PILOT SCHEDULE&#10;  ..."></textarea>
+  <div class="editor-row">
+    <button class="btn" id="paste-parse">Read it</button>
+    <span id="paste-msg" class="form-msg"></span>
+  </div>
+  <div id="paste-preview"></div>
+</section>
+
+<section class="tab-panel" id="tab-calendar">
+  <div id="month-chips"></div>
+  <div class="cal-scroll"><div id="calendar-host"></div></div>
+</section>
+
+<section class="tab-panel" id="tab-scorecard">
+  <div id="scorecard-host"></div>
+</section>
+
+<section class="tab-panel" id="tab-sizer">
+  <p class="sizer-help">Size a <b>prospective trip</b> before you bid it: paste the whole rotation screen
+  from iCrew (Rotation Display or RPI print) — no typing. The trip is evaluated against everything in the
+  flight log; <b>nothing is added</b>. Manual entry still works too: one leg per line,
+  <b>FLIGHT PAIR H:MM YYYY-MM-DD HH:MM</b>.</p>
+  <textarea id="sizer-in" placeholder="DL20 SEA-LHR 9:15 2026-09-14 12:34&#10;DL4 LHR-JFK 8:10 2026-09-15 19:20"></textarea>
+  <div><button class="btn" id="sizer-run">Run peak walk</button></div>
+  <div id="sizer-out"></div>
+</section>
+
+<section class="tab-panel" id="tab-data">
+  <h3>Add a leg</h3>
+  <p class="form-note">Enter <b>block time</b> (H:MM — the out-off-on-in figure from the leg detail screen).
+  Out-to-in clock time is NOT block time — it contains the timezone shift. <b>Block-in</b> is the arrival moment,
+  never departure: a redeye departing day D blocks in day D+1. Deadheads: check DH — logged, paid, excluded from the cap.</p>
+  <form id="leg-form" class="leg-form">
+    <label>ROTATION<input type="text" id="f-rot" required placeholder="A051"></label>
+    <label>FLIGHT<input type="text" id="f-flt" required placeholder="DL145"></label>
+    <label>PAIR<input type="text" id="f-pair" required placeholder="AMS-SEA"></label>
+    <label>BLOCK H:MM<input type="text" id="f-block" required placeholder="9:42" pattern="\d{1,3}:[0-5]\d" title="H:MM only — decimal hours forbidden"></label>
+    <label>SCHED BLOCK (opt)<input type="text" id="f-sched" placeholder="10:17" pattern="\d{1,3}:[0-5]\d"></label>
+    <label>BLOCK-IN DATE (ET)<input type="date" id="f-date"></label>
+    <label>BLOCK-IN TIME (ET)<input type="time" id="f-time"></label>
+    <label class="checks"><input type="checkbox" id="f-dh"> DH</label>
+    <label class="checks"><input type="checkbox" id="f-actual" checked> flown (actual)</label>
+    <label class="checks"><button class="btn" type="submit">Append leg</button></label>
+  </form>
+  <p id="leg-msg" class="form-msg"></p>
+  <h3>Import / backup</h3>
+  <p class="form-note">First run on a new device: import your latest exported <b>headroom.html</b>
+  (or a .json backup) — everything stays on this device, nothing is uploaded anywhere.</p>
+  <div class="editor-row">
+    <input type="file" id="import-file" accept=".html,.json,.txt">
+    <button class="btn" id="backup-btn">Download data backup (.json)</button>
+    <span id="import-msg" class="form-msg"></span>
+  </div>
+  <h3>Raw JSON (validated on apply)</h3>
+  <div id="editors"></div>
+</section>
+
+<script>
+/* ============================================================
+ * ROLLING THUNDER — engine.js
+ * FAR 117.23(b)(1) rolling 100:00-in-672:00 computation engine.
+ *
+ * Invariants (see HANDOFF SPEC §3):
+ *  - All arithmetic in absolute epoch time. Display-only timezone.
+ *  - Minutes are integers, always. HH:MM on output only.
+ *  - Age-off is DERIVED: block_in + 672h exactly. Never stored.
+ *  - Deadheads contribute ZERO to the cap but are never dropped.
+ *  - Entry gate: leg contributes nothing before block_in.
+ *  - Exit gate: leg leaves at block_in + 672h, to the minute.
+ * ============================================================ */
+(function (global) {
+  'use strict';
+
+  const CAP_MINUTES = 6000;                 // 100:00
+  const WINDOW_MS = 672 * 3600 * 1000;      // exactly 28 days
+  const MIN_MS = 60000;
+  const TZ = 'America/New_York';            // display zone — never the device zone
+  const BENCHMARK_MINUTES = 7062;           // 117.7h — trailing 3-yr avg (2023: 111.5 · 2024: 126.5 · 2025: 115.1). Recompute each January.
+  const AWARD_CEILING_MINUTES = 5970;       // 99:30 — practical award ceiling (30-min standoff)
+
+  /* ---------- time helpers ---------- */
+
+  function blockInMs(leg) {
+    return leg.block_in == null ? null : Date.parse(leg.block_in);
+  }
+  function ageOffMs(leg) {
+    const t = blockInMs(leg);
+    return t == null ? null : t + WINDOW_MS;
+  }
+
+  const dtfCache = {};
+  function partsFmt(tz) {
+    if (!dtfCache[tz]) {
+      dtfCache[tz] = new Intl.DateTimeFormat('en-US', {
+        timeZone: tz, hour12: false,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
+      });
+    }
+    return dtfCache[tz];
+  }
+
+  // UTC-offset of `tz` at a given absolute moment.
+  function tzOffsetMs(epoch, tz) {
+    tz = tz || TZ;
+    const p = {};
+    for (const part of partsFmt(tz).formatToParts(new Date(epoch))) p[part.type] = part.value;
+    const asUTC = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute, +p.second);
+    return asUTC - epoch;
+  }
+
+  // Absolute epoch of local wall-clock (dateStr 'YYYY-MM-DD', minutes into day) in `tz`.
+  // Iterative so it converges across DST transitions.
+  function epochAt(dateStr, minutesIntoDay, tz) {
+    tz = tz || TZ;
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const wallUTC = Date.UTC(y, m - 1, d, 0, minutesIntoDay || 0);
+    let epoch = wallUTC;
+    for (let i = 0; i < 3; i++) {
+      const next = wallUTC - tzOffsetMs(epoch, tz);
+      if (next === epoch) break;
+      epoch = next;
+    }
+    return epoch;
+  }
+
+  function addDays(dateStr, n) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+  }
+
+  function fmtHM(mins) {
+    if (mins == null) return '—';
+    const sign = mins < 0 ? '-' : '';
+    const a = Math.abs(Math.round(mins));
+    return sign + Math.floor(a / 60) + ':' + String(a % 60).padStart(2, '0');
+  }
+
+  function fmtClock(epoch, tz) {
+    return new Intl.DateTimeFormat('en-GB', { timeZone: tz || TZ, hour: '2-digit', minute: '2-digit', hour12: false })
+      .format(new Date(epoch));
+  }
+
+  function fmtDate(epoch, tz) {
+    // 'YYYY-MM-DD' of an absolute moment, in display zone
+    return new Intl.DateTimeFormat('en-CA', { timeZone: tz || TZ, year: 'numeric', month: '2-digit', day: '2-digit' })
+      .format(new Date(epoch));
+  }
+
+  // ISO 8601 with the display zone's explicit offset (storage format)
+  function isoInTZ(epoch, tz) {
+    tz = tz || TZ;
+    const off = tzOffsetMs(epoch, tz);
+    const local = new Date(epoch + off);
+    const pad = (n) => String(n).padStart(2, '0');
+    const offMin = off / MIN_MS;
+    const sign = offMin < 0 ? '-' : '+';
+    const a = Math.abs(offMin);
+    return local.toISOString().slice(0, 19).replace('Z', '') +
+      sign + pad(Math.floor(a / 60)) + ':' + pad(a % 60);
+  }
+
+  function parseHM(str) {
+    // 'H:MM' or 'HH:MM' → integer minutes. Rejects decimal hours.
+    const m = /^(\d{1,3}):([0-5]\d)$/.exec(String(str).trim());
+    if (!m) throw new Error('Bad HH:MM value: "' + str + '" (decimal hours are forbidden)');
+    return (+m[1]) * 60 + (+m[2]);
+  }
+
+  /* ---------- core: rolling total & headroom ---------- */
+
+  function countable(legs) {
+    return legs.filter((l) => !l.deadhead && l.block_in != null);
+  }
+
+  function rollingAt(legs, t) {
+    let sum = 0;
+    for (const l of countable(legs)) {
+      const b = blockInMs(l);
+      if (b <= t && t < b + WINDOW_MS) sum += l.block_minutes;
+    }
+    return sum;
+  }
+
+  function headroomAt(legs, t) {
+    return CAP_MINUTES - rollingAt(legs, t);
+  }
+
+  /* ---------- day segmentation (§3.2) ---------- */
+  // Returns segments + interleaved timeline for rendering.
+  // Events exactly at day-start are already reflected in headroomAt(start).
+  function daySegments(legs, dateStr) {
+    const start = epochAt(dateStr, 0);
+    const end = epochAt(addDays(dateStr, 1), 0);
+    const dayMinutes = Math.round((end - start) / MIN_MS); // 1440 except DST transition days
+
+    const events = [];
+    for (const l of countable(legs)) {
+      const b = blockInMs(l);
+      const a = b + WINDOW_MS;
+      if (b > start && b < end) events.push({ t: b, kind: 'IN', delta: +l.block_minutes, leg: l });
+      if (a > start && a < end) events.push({ t: a, kind: 'OFF', delta: -l.block_minutes, leg: l });
+    }
+    // OFF before IN at identical instants — matches rollingAt's boundary semantics
+    events.sort((x, y) => x.t - y.t || (x.kind === y.kind ? 0 : x.kind === 'OFF' ? -1 : 1));
+
+    const segments = [];
+    const timeline = [];
+    let cursor = start;
+    let h = headroomAt(legs, start);
+    for (const e of events) {
+      if (e.t > cursor) {
+        const seg = mkSeg(cursor, e.t, h, start, end);
+        segments.push(seg); timeline.push({ type: 'seg', seg });
+      }
+      timeline.push({ type: 'ev', ev: e });
+      h -= e.delta;         // IN lowers headroom, OFF raises it
+      cursor = e.t;
+    }
+    const last = mkSeg(cursor, end, h, start, end);
+    segments.push(last); timeline.push({ type: 'seg', seg: last });
+
+    // Sanity: segments must tile the day exactly (§3.5)
+    const total = segments.reduce((s, x) => s + x.minutes, 0);
+    if (total !== dayMinutes) {
+      throw new Error('SANITY: segments sum ' + total + ' ≠ ' + dayMinutes + ' for ' + dateStr);
+    }
+    // Cross-check delta walk against direct evaluation at end of day
+    const direct = headroomAt(legs, end - 1);
+    if (last.headroom !== direct) {
+      throw new Error('SANITY: delta-walk headroom ' + last.headroom + ' ≠ direct ' + direct + ' for ' + dateStr);
+    }
+    return { dateStr, start, end, dayMinutes, events, segments, timeline };
+  }
+
+  function mkSeg(from, to, headroom, dayStart, dayEnd) {
+    return {
+      from, to, headroom,
+      minutes: Math.round((to - from) / MIN_MS),
+      pct: (100 * (to - from)) / (dayEnd - dayStart)
+    };
+  }
+
+  /* ---------- binding-peak walk (§3.3 — trip sizing) ---------- */
+  // Max rolling total reached at any candidate leg's block-in.
+  // NOT the same as any day's headroom. Never display it as one.
+  function peakWalk(existingLegs, candidateLegs) {
+    const cands = countable(candidateLegs).slice().sort((a, b) => blockInMs(a) - blockInMs(b));
+    const combined = countable(existingLegs).concat(cands);
+    const walk = [];
+    let peak = 0, peakAt = null, peakLeg = null;
+    for (const c of cands) {
+      const t = blockInMs(c);
+      const r = rollingAt(combined, t);   // includes age-offs landed before this moment
+      walk.push({ leg: c, t, rolling: r });
+      if (r > peak) { peak = r; peakAt = t; peakLeg = c; }
+    }
+    const margin = CAP_MINUTES - peak;
+    const verdict = peak > CAP_MINUTES ? 'BLGT'
+      : peak > AWARD_CEILING_MINUTES ? 'BUFFER'
+      : 'CLEAN';
+    return { peak, peakAt, peakLeg, margin, verdict, walk };
+  }
+
+  /* ---------- scorecard (§3.4) ---------- */
+  // Three independent metrics. Never composited. Raw inputs preferred
+  // per-metric; stored ratios accepted for ratio-only historical months.
+  function scorecard(m) {
+    const r = m.ratios || {};
+    const out = { pay: null, offense: null, defense: null, computed: {} };
+    if (m.pay_hours_minutes != null) {
+      out.pay = m.pay_hours_minutes / BENCHMARK_MINUTES; out.computed.pay = true;
+    } else if (r.pay != null) out.pay = r.pay;
+
+    if (m.premium_minutes != null && m.baseline_minutes) {
+      out.offense = m.premium_minutes / m.baseline_minutes; out.computed.offense = true;
+    } else if (r.offense != null) out.offense = r.offense;
+
+    if (m.res_credit_minutes != null && m.baseline_minutes) {
+      out.defense = Math.min(1, 1 - ((m.res_credit_minutes - (m.sick_minutes || 0)) / m.baseline_minutes));
+      out.computed.defense = true;
+    } else if (r.defense != null) out.defense = r.defense;
+    return out;
+  }
+
+  function guaranteeFromALV(alvMinutes) {
+    return Math.min(4800, Math.max(4320, alvMinutes - 120)); // ALV − 2:00, floor 72:00, ceiling 80:00
+  }
+
+  /* ---------- sanity gates (§3.5) — run before any render ---------- */
+  function sanityGates(legs, dateStrs) {
+    const fails = [];
+    const flown = legs.filter((l) => !l.deadhead && l.block_in != null && l.actual !== false);
+
+    for (const l of legs) {
+      if ('age_off' in l) fails.push(l.id + ': age_off must be derived, never stored');
+      if (l.block_in != null && !/[+-]\d{2}:\d{2}$|Z$/.test(l.block_in)) {
+        fails.push(l.id + ': block_in lacks an explicit UTC offset');
+      }
+      if (!Number.isInteger(l.block_minutes)) {
+        fails.push(l.id + ': block_minutes must be an integer (never decimal hours)');
+      }
+      if (!l.deadhead && l.block_in == null) {
+        fails.push(l.id + ': non-deadhead leg with no block_in');
+      }
+    }
+
+    // No moment shows rolling > 100:00 from flown legs
+    for (const l of flown) {
+      const r = rollingAt(flown, blockInMs(l));
+      if (r > CAP_MINUTES) fails.push(l.id + ': rolling ' + fmtHM(r) + ' > 100:00 at block-in — FAR bust in flown data');
+    }
+
+    // After last flown block-in, headroom is monotonically non-decreasing
+    if (flown.length) {
+      const lastIn = Math.max.apply(null, flown.map(blockInMs));
+      const offTimes = flown.map(ageOffMs).filter((t) => t > lastIn).sort((a, b) => a - b);
+      let prev = headroomAt(flown, lastIn);
+      for (const t of offTimes) {
+        const h = headroomAt(flown, t);
+        if (h < prev) { fails.push('headroom DIPS after last flown leg (' + fmtHM(prev) + ' → ' + fmtHM(h) + ' at ' + new Date(t).toISOString() + ') — data error'); break; }
+        prev = h;
+      }
+    }
+
+    // Every day's segments tile exactly (throws inside daySegments)
+    for (const d of dateStrs || []) {
+      try { daySegments(legs, d); } catch (e) { fails.push(String(e.message || e)); }
+    }
+    return fails;
+  }
+
+  /* ---------- rail color bands (render spec) ---------- */
+  function band(headroomMinutes) {
+    if (headroomMinutes < 600) return '#D1352B';    // < 10:00
+    if (headroomMinutes < 1200) return '#E07B2C';   // 10–20
+    if (headroomMinutes < 2100) return '#E5C33C';   // 20–35 (20:00 line: a wide-body 4-day needs ~that)
+    return '#3E9E6B';                                // ≥ 35
+  }
+
+  const Engine = {
+    CAP_MINUTES, WINDOW_MS, TZ, BENCHMARK_MINUTES, AWARD_CEILING_MINUTES,
+    blockInMs, ageOffMs, tzOffsetMs, epochAt, addDays,
+    fmtHM, fmtClock, fmtDate, isoInTZ, parseHM,
+    countable, rollingAt, headroomAt,
+    daySegments, peakWalk, scorecard, guaranteeFromALV,
+    sanityGates, band
+  };
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = Engine;
+  global.Engine = Engine;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+/* ROLLING THUNDER — icrew.js
+ * Deterministic parsers for text pasted from iCrew. NO AI anywhere:
+ * these screens are fixed-width terminal reports, so every field lives
+ * at an exact character column derived from the header line.
+ *
+ * v1: "Current Schedule" (PILOT SCHEDULE screen) → day types + bid period
+ *     + reserve credit. Legs still come from trip-detail screens (future parser).
+ *
+ * Format facts learned 2026-08-19 (see docs/icrew-formats.md):
+ * - Header timestamp is YY/MM/DD HH:MM:SS.
+ * - LOT line carries the bid period boundaries: "01AUG26 / 30AUG26".
+ * - OFF column: ** golden · XX · PB · PR · blank+RES = LC (assumption #1).
+ * - ROT1: rotation starting that day; "----" = continuation; "." prefix
+ *   meaning unconfirmed (assumption #3, kept as a flag).
+ * - R1 letter: G/H — believed green/white slip (assumption #2, kept raw).
+ * - R column: REST marker.
+ * - BLKN: day's arrival block-in in ARRIVAL-STATION LOCAL TIME. Never
+ *   feed this into the 672h math — timezone unknown. Display only.
+ * - Footer figures like 0075.45 are HH.MM (75:45), NEVER decimal hours.
+ */
+(function (global) {
+  'use strict';
+  const E = global.Engine || (typeof require !== 'undefined' ? require('./engine.js') : null);
+
+  const MON = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
+  const OFF_TYPE = { '**': 'GOLDEN', 'XX': 'XX', 'PB': 'PB', 'PR': 'PR' };
+
+  // Official iCrew reason codes (legend provided by Ramon 2026-08-19).
+  // Ramon lives in the G / F / H premium-capture categories.
+  // Blank on an assigned rotation = normal reserve assignment — works against
+  // the guarantee, no extra pay (a "losing assignment").
+  const REASON = {
+    A: 'assignment',
+    B: 'green slip — actual reserve value >= maximum reserve',
+    C: 'assignment with conflict',
+    E: 'out of base green slip — actual reserve value >= maximum reserve',
+    F: 'green slip < 18hrs to report',
+    G: 'greenslip award',
+    H: 'out of base/instructor greenslip award',
+    J: 'out of base green slip < 18hrs to report',
+    K: 'inverse assignment rotn < 18hrs to report',
+    L: '23k in base recovery trip > original premium pay trip',
+    M: 'inverse assignment in base with conflict',
+    N: '23k recovery trip < original in base trip — no pay the rotation',
+    O: 'out of base white slip',
+    P: '23k recovery trip > original trip',
+    PS: 'PCS swap with the pot award',
+    PW: 'PCS white slip award',
+    Q: '23k out of base recovery trip < original premium pay trip',
+    S: '23k out of base recovery trip > original premium pay trip',
+    T: 'out of base green slip with conflict',
+    W: 'white slip',
+    X: 'no pay the rotation',
+    Y: 'yellow slip'
+  };
+  const EL_CODE = { '<': 'early report', '>': 'late release', 'X': 'early report & late release' };
+
+  function pad2(n) { return String(n).padStart(2, '0'); }
+
+  function parseDDMMMYY(s) {
+    const m = /^(\d{2})([A-Z]{3})(\d{2})$/.exec(s.trim());
+    if (!m || !MON[m[2]]) throw new Error('Bad date "' + s + '" (want DDMMMYY like 01AUG26)');
+    return '20' + m[3] + '-' + pad2(MON[m[2]]) + '-' + m[1];
+  }
+
+  // "0075.45" / "017.00" → integer minutes. The dot is HH.MM, not a decimal.
+  function hhDotMM(s) {
+    const m = /^(\d+)\.(\d{2})$/.exec(s.trim());
+    if (!m || +m[2] > 59) throw new Error('Bad HH.MM value "' + s + '"');
+    return (+m[1]) * 60 + (+m[2]);
+  }
+
+  // Column positions derived from the header line itself, so modest
+  // margin shifts in the paste don't break anything.
+  function headerColumns(header) {
+    const spec = [
+      ['DTE', 'DTE'], ['OR', ' OR '], ['DES', 'DES'], ['OFF', 'OFF'], ['STAT1', 'STAT'],
+      ['ROT1', 'ROT1'], ['D1', ' D '], ['R1', 'R1'], ['STAT2', 'STAT'], ['ROT2', 'ROT2'],
+      ['D2', ' D '], ['R2', 'R2'], ['RPT1', 'RPT1'], ['RPT2', 'RPT2'], ['EL', 'E/L'],
+      ['R', ' R '], ['CALL', 'CALL'], ['BLKN', 'BLKN'], ['DTE2', 'DTE']
+    ];
+    const pos = {}; const order = [];
+    let from = 0;
+    for (const [key, token] of spec) {
+      const idx = header.indexOf(token, from);
+      if (idx < 0) throw new Error('Header is missing "' + token.trim() + '" — is this the Current Schedule screen?');
+      pos[key] = token.startsWith(' ') ? idx + 1 : idx;
+      order.push(key);
+      from = pos[key] + 1;
+    }
+    return { pos, order };
+  }
+
+  function parseCurrentSchedule(text) {
+    const warnings = [];
+    const lines = text.replace(/\r/g, '').split('\n');
+
+    // --- bid period from the LOT line ---
+    const lotLine = lines.find((l) => /LOT:/.test(l));
+    if (!lotLine) throw new Error('No "LOT:" line found — paste the whole Current Schedule screen.');
+    const lot = /LOT:\s*(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\d{2}[A-Z]{3}\d{2})\s*\/\s*(\d{2}[A-Z]{3}\d{2})/.exec(lotLine);
+    if (!lot) throw new Error('Could not read bid period from LOT line: ' + lotLine.trim());
+    const start = parseDDMMMYY(lot[5]);
+    const end = parseDDMMMYY(lot[6]);
+    // Bid periods are named for the month they END in (Sep runs 31 Aug – 30 Sep).
+    const bidPeriod = end.slice(0, 7);
+
+    // --- capture timestamp (YY/MM/DD HH:MM:SS) ---
+    let capturedAt = null;
+    for (const l of lines.slice(0, 8)) {
+      const m = /(\d{2})\/(\d{2})\/(\d{2})\s+(\d{2}:\d{2}:\d{2})/.exec(l);
+      if (m) { capturedAt = '20' + m[1] + '-' + m[2] + '-' + m[3] + ' ' + m[4]; break; }
+    }
+
+    // --- locate the two header lines; day rows sit between them ---
+    const hIdx = lines.findIndex((l) => l.includes('DTE') && l.includes('DES') && l.includes('BLKN'));
+    if (hIdx < 0) throw new Error('Column header line not found.');
+    const header = lines[hIdx];
+    const { pos, order } = headerColumns(header);
+    const endIdx = lines.findIndex((l, i) => i > hIdx && l.includes('DTE') && l.includes('BLKN'));
+    const rows = lines.slice(hIdx + 1, endIdx < 0 ? undefined : endIdx);
+
+    const field = (row, key) => {
+      const i = order.indexOf(key);
+      const from = key === 'ROT1' || key === 'ROT2' ? pos[key] - 1 : pos[key]; // catch the "." prefix
+      const to = i + 1 < order.length ? pos[order[i + 1]] : row.length;
+      return row.slice(from, to).trim();
+    };
+
+    const days = [];
+    let curRotation = null;
+    let curDate = start;
+
+    for (const row of rows) {
+      const padded = row.padEnd(header.length, ' ');
+      const dte = field(padded, 'DTE');
+      const m = /^(\d{2})([A-Z])$/.exec(dte);
+      if (!m) continue; // remarks/blank lines
+      const dayNum = +m[1];
+
+      // walk forward to the matching calendar date (handles Sep starting 31 Aug)
+      let dateStr = curDate, hops = 0;
+      while (+dateStr.slice(8) !== dayNum) {
+        dateStr = E.addDays(dateStr, 1);
+        if (++hops > 40) throw new Error('Day ' + dte + ' does not follow ' + curDate + ' — misaligned paste?');
+      }
+      curDate = E.addDays(dateStr, 1);
+
+      const dte2 = field(padded, 'DTE2');
+      if (dte2 && dte2 !== dte) warnings.push(dte + ': trailing date column reads "' + dte2 + '" — check paste alignment');
+
+      const off = field(padded, 'OFF');
+      const rotRaw = field(padded, 'ROT1');
+      const rest = field(padded, 'R') === 'R';
+      const r1 = field(padded, 'R1');
+      const rpt = field(padded, 'RPT1');
+      const blkn = field(padded, 'BLKN');
+      const des = field(padded, 'DES');
+      const el = field(padded, 'EL');
+
+      let slipDot = false;
+      if (rotRaw && rotRaw !== '----') {
+        curRotation = rotRaw.replace(/^\./, '');
+        slipDot = rotRaw.startsWith('.');
+      } else if (!rotRaw) {
+        curRotation = null;
+      }
+      const onTrip = !!rotRaw; // rotation start or ---- continuation
+
+      const entry = { date: dateStr, bid_period: bidPeriod, source: 'icrew-paste' };
+      if (onTrip) {
+        entry.type = 'TRIP';
+        entry.rotation = curRotation;
+        if (OFF_TYPE[off]) entry.overlay = OFF_TYPE[off];
+      } else if (OFF_TYPE[off]) {
+        entry.type = OFF_TYPE[off];
+      } else if (des === 'RES') {
+        entry.type = 'LC'; // assumption #1: blank OFF on a RES day = long-call availability
+      } else {
+        entry.type = 'LC';
+        warnings.push(dte + ': DES "' + des + '" not RES — typed as LC, verify');
+      }
+      if (rest) {
+        if (!entry.overlay) entry.overlay = 'REST';
+        else entry.note = (entry.note ? entry.note + ' · ' : '') + 'REST';
+      }
+      const bits = [];
+      if (rpt) bits.push('report ' + rpt);
+      if (blkn) bits.push('BLKN ' + blkn + ' (arrival-station local — not ET)');
+      if (r1) {
+        entry.reason = r1;
+        bits.push('reason ' + r1 + ' — ' + (REASON[r1] || 'UNKNOWN CODE, check legend'));
+      } else if (onTrip) {
+        entry.reason = '';
+        bits.push('reason blank — normal reserve assignment (against guarantee, no extra pay)');
+      }
+      if (el) bits.push(EL_CODE[el] || 'E/L ' + el);
+      if (slipDot) bits.push('"." prefix on rotation (meaning unconfirmed)');
+      if (bits.length) entry.note = (entry.note ? entry.note + ' · ' : '') + bits.join(' · ');
+      days.push(entry);
+    }
+    if (!days.length) throw new Error('No day rows parsed — paste the whole screen including the column header.');
+
+    // --- footer figures + cautions ---
+    const meta = { capturedAt, bidPeriod, start, end };
+    const foot = lines.join('\n');
+    let fm;
+    if ((fm = /ACT CRED:\s*(\d+\.\d{2})/.exec(foot))) meta.act_cred_minutes = hhDotMM(fm[1]);
+    const footNoMax = foot.replace(/MAX PROJ:\s*\d+\.\d{2}/g, '');
+    if ((fm = /PROJ:\s*(\d+\.\d{2})/.exec(footNoMax))) meta.proj_minutes = hhDotMM(fm[1]);
+    if ((fm = /MAX RES:\s*(\d+\.\d{2})/.exec(foot))) meta.max_res_minutes = hhDotMM(fm[1]);
+    if ((fm = /MAX P\/UP:\s*(\d+\.\d{2})/.exec(foot))) meta.max_pickup_minutes = hhDotMM(fm[1]);
+    meta.cautions = lines.filter((l) => /CAUTION/.test(l)).map((l) => l.trim());
+
+    return { kind: 'current-schedule', bid_period: bidPeriod, start, end, days, meta, warnings };
+  }
+
+  /* ================= Monthly Time Data (Time Card) =================
+   * Feeds the PAY·O·D scorecard: ALV, baseline (SUB TTL CREDIT),
+   * premium (sum of all slip-pay fields), reserve credit.
+   * Pay hours are NOT on this screen (widgetcrew Time Card only).
+   * NOTE: this screen's timestamp is MM/DD/YY — Pilot Schedule is YY/MM/DD. */
+  function parseMonthlyTimeData(text) {
+    const warnings = [];
+    const lines = text.replace(/\r/g, '').split('\n');
+    if (!/MONTHLY TIME DATA/.test(text)) throw new Error('Not a MONTHLY TIME DATA screen.');
+
+    let capturedAt = null;
+    for (const l of lines.slice(0, 6)) {
+      const m = /(\d{2})\/(\d{2})\/(\d{2})\s+(\d{2}:\d{2}:\d{2})/.exec(l);
+      if (m) { capturedAt = '20' + m[3] + '-' + m[1] + '-' + m[2] + ' ' + m[4]; break; } // MM/DD/YY
+    }
+
+    const bp = /BID PERIOD:\s*(\d{2}[A-Z]{3}\d{2})\s*-\s*(\d{2}[A-Z]{3}\d{2})/.exec(text);
+    if (!bp) throw new Error('No BID PERIOD line found.');
+    const start = parseDDMMMYY(bp[1]);
+    const end = parseDDMMMYY(bp[2]);
+    const bidPeriod = end.slice(0, 7);
+
+    const hm = (s) => E.parseHM(s);
+    const grab = (re, label) => {
+      const m = re.exec(text);
+      if (!m) { warnings.push(label + ' not found'); return null; }
+      return hm(m[1]);
+    };
+
+    // bank header: values on the line after "TEMP IN BANK ..."
+    let bank = null;
+    const bankIdx = lines.findIndex((l) => /TEMP IN BANK/.test(l));
+    if (bankIdx >= 0) {
+      for (let i = bankIdx + 1; i < Math.min(bankIdx + 3, lines.length); i++) {
+        const v = lines[i].match(/\d+:\d{2}/g);
+        if (v && v.length >= 4) { bank = { temp_in_bank: hm(v[0]), bank_adj: hm(v[1]), in_bank: hm(v[2]), alv: hm(v[3]) }; break; }
+      }
+    }
+    if (!bank) throw new Error('Bank/ALV header values not found.');
+
+    // rotation rows: 02AUG  RES  A124  17:26  32:25  32:25  [10:17]
+    const rotations = [];
+    for (const l of lines) {
+      const m = /^\s*(\d{2})([A-Z]{3})\s+(\S+)\s+(\S+)\s+(\d+:\d{2})\s+(\d+:\d{2})\s+(\d+:\d{2})(?:\s+(\d+:\d{2}))?\s*$/.exec(l);
+      if (!m || !MON[m[2]]) continue;
+      let dateStr = start.slice(0, 4) + '-' + pad2(MON[m[2]]) + '-' + m[1];
+      if (dateStr < start) dateStr = String(+start.slice(0, 4) + 1) + dateStr.slice(4); // Dec→Jan periods
+      rotations.push({
+        date: dateStr, des: m[3], rotation: m[4],
+        block_minutes: hm(m[5]), sked_minutes: hm(m[6]), pay_minutes: hm(m[7]),
+        credit_minutes: m[8] ? hm(m[8]) : null
+      });
+    }
+
+    // credit equation: 10:17 + 65:28 + 0:00 = 75:45 - 0:00 + 0:00 = 75:45  82:00
+    const eq = /(\d+:\d{2})\s*\+\s*(\d+:\d{2})\s*\+\s*(\d+:\d{2})\s*=\s*(\d+:\d{2})\s*-\s*(\d+:\d{2})\s*\+\s*(\d+:\d{2})\s*=\s*(\d+:\d{2})\s+(\d+:\d{2})/.exec(text);
+    if (!eq) throw new Error('Credit equation line not found.');
+    const credit = {
+      res_credit: hm(eq[1]), res_guar: hm(eq[2]), other_guar: hm(eq[3]),
+      sub_ttl_credit: hm(eq[4]), payback_neg_bank: hm(eq[5]), bank_opt_awd: hm(eq[6]),
+      ttl_credit: hm(eq[7]), bank_opt_limit: hm(eq[8])
+    };
+    if (credit.res_credit + credit.res_guar + credit.other_guar !== credit.sub_ttl_credit) {
+      warnings.push('credit equation does not add up — check paste');
+    }
+
+    // slip-pay fields; premium = the sum of all of them
+    const slips = {
+      gslip: grab(/G\/SLIP PAY\s*:\s*(\d+:\d{2})/, 'G/SLIP PAY'),
+      iaq: grab(/IA\/Q-SLIP PAY:\s*(\d+:\d{2})/, 'IA/Q-SLIP PAY'),
+      res_assign_gq: grab(/RES ASSIGN-G\/Q SLIP PAY:\s*(\d+:\d{2})/, 'RES ASSIGN-G/Q SLIP PAY'),
+      asterisk: grab(/ASTERISK PAY:\s*(\d+:\d{2})/, 'ASTERISK PAY'),
+      sslip: grab(/S\/SLIP PAY\s*:\s*(\d+:\d{2})/, 'S/SLIP PAY'),
+      pbs_pr: grab(/PBS\/PR PAY\s*:\s*(\d+:\d{2})/, 'PBS/PR PAY')
+    };
+    const premium = Object.values(slips).reduce((a, b) => a + (b || 0), 0);
+
+    const meta = {
+      capturedAt,
+      gs_credit_applicable: grab(/REG G\/S SLIP PAY:\s*(\d+:\d{2})/, 'CREDIT APPLICABLE'),
+      gs_trigger: grab(/REG G\/S TRIGGER:\s*(\d+:\d{2})/, 'REG G/S TRIGGER')
+    };
+    // OUT BANK sits under a stacked 4-column header; read the 4-value line under it
+    const outIdx = lines.findIndex((l) => /BANK DEP/.test(l));
+    meta.out_bank = null;
+    if (outIdx >= 0) {
+      for (let i = outIdx + 1; i < Math.min(outIdx + 4, lines.length); i++) {
+        const v = lines[i].match(/\d+:\d{2}/g);
+        if (v && v.length >= 4) { meta.out_bank = hm(v[3]); break; }
+      }
+    }
+    const pbd = /NBR PAYBACK DAYS AVAILABLE FOR USE:\s*(\d+)/.exec(text);
+    meta.payback_days_available = pbd ? +pbd[1] : null;
+    const vacIdx = lines.findIndex((l) => /VAC TIME IN/.test(l));
+    if (vacIdx >= 0) {
+      const v = (lines[vacIdx + 1] || '').trim().split(/\s+/);
+      if (v.length >= 5) meta.vacation = { time_in: hm(v[0]), days_in: +v[1], payoff: hm(v[2]), time_out: hm(v[3]), days_out: +v[4] };
+    }
+    const sc = /ADDITIONAL S\/C\s*:\s*(\d+)/.exec(text);
+    meta.additional_sc = sc ? +sc[1] : null;
+    const oc = /ADDITIONAL ON-CALL-DAYS\s*:\s*(\d+)/.exec(text);
+    meta.additional_on_call_days = oc ? +oc[1] : null;
+
+    return {
+      kind: 'monthly-time-data', bid_period: bidPeriod, start, end,
+      alv_minutes: bank.alv,
+      baseline_minutes: credit.sub_ttl_credit,
+      premium_minutes: premium,
+      res_credit_minutes: credit.res_credit,
+      bank, credit, slips, rotations, meta, warnings
+    };
+  }
+
+  /* ================= Rotation print (RPI / ROTATION OPER) =================
+   * The flight-by-flight document — feeds legs.json, i.e. the 672h math itself.
+   * Times are STATION LOCAL. Absolute block-in is derived:
+   *   departure epoch (dep airport tz) + block = arrival epoch (= block-in).
+   * Self-verifying: the computed arrival must match the printed arrival local
+   * time to the minute, leg blocks must sum to the footer TBL, and makeups to
+   * TBMU. Any mismatch is surfaced, never absorbed.
+   * Deadhead marker: NOT YET KNOWN (no DH on the teaching rotation, TDHD 0.00).
+   * Until a DH rotation paste teaches us, a TBL mismatch is the tripwire. */
+  const AIRPORT_TZ = {
+    // Eastern
+    ATL: 'America/New_York', JFK: 'America/New_York', LGA: 'America/New_York', EWR: 'America/New_York',
+    BOS: 'America/New_York', DTW: 'America/New_York', PHL: 'America/New_York', DCA: 'America/New_York',
+    IAD: 'America/New_York', CLT: 'America/New_York', RDU: 'America/New_York', MCO: 'America/New_York',
+    TPA: 'America/New_York', FLL: 'America/New_York', MIA: 'America/New_York', JAX: 'America/New_York',
+    CVG: 'America/New_York', IND: 'America/New_York', CLE: 'America/New_York', PIT: 'America/New_York',
+    // Central
+    MSP: 'America/Chicago', ORD: 'America/Chicago', MDW: 'America/Chicago', DFW: 'America/Chicago',
+    IAH: 'America/Chicago', HOU: 'America/Chicago', AUS: 'America/Chicago', SAT: 'America/Chicago',
+    MSY: 'America/Chicago', MEM: 'America/Chicago', BNA: 'America/Chicago', STL: 'America/Chicago',
+    MCI: 'America/Chicago',
+    // Mountain / Pacific / other US
+    DEN: 'America/Denver', SLC: 'America/Denver', PHX: 'America/Phoenix',
+    SEA: 'America/Los_Angeles', PDX: 'America/Los_Angeles', SFO: 'America/Los_Angeles',
+    LAX: 'America/Los_Angeles', SAN: 'America/Los_Angeles', LAS: 'America/Los_Angeles',
+    ANC: 'America/Anchorage', HNL: 'Pacific/Honolulu',
+    // Europe
+    LHR: 'Europe/London', LGW: 'Europe/London', EDI: 'Europe/London', DUB: 'Europe/Dublin',
+    AMS: 'Europe/Amsterdam', CDG: 'Europe/Paris', NCE: 'Europe/Paris', BRU: 'Europe/Brussels',
+    FRA: 'Europe/Berlin', MUC: 'Europe/Berlin', ZRH: 'Europe/Zurich', MAD: 'Europe/Madrid',
+    BCN: 'Europe/Madrid', LIS: 'Europe/Lisbon', FCO: 'Europe/Rome', MXP: 'Europe/Rome',
+    NAP: 'Europe/Rome', VCE: 'Europe/Rome', ATH: 'Europe/Athens', IST: 'Europe/Istanbul',
+    PRG: 'Europe/Prague', CPH: 'Europe/Copenhagen',
+    // Latin America
+    GRU: 'America/Sao_Paulo', GIG: 'America/Sao_Paulo', EZE: 'America/Argentina/Buenos_Aires',
+    SCL: 'America/Santiago', LIM: 'America/Lima', BOG: 'America/Bogota', UIO: 'America/Guayaquil',
+    MEX: 'America/Mexico_City', CUN: 'America/Cancun', PTY: 'America/Panama', SJU: 'America/Puerto_Rico',
+    // Africa / Middle East / Asia-Pacific
+    TLV: 'Asia/Jerusalem', CAI: 'Africa/Cairo', JNB: 'Africa/Johannesburg', ACC: 'Africa/Accra',
+    DKR: 'Africa/Dakar', LOS: 'Africa/Lagos',
+    ICN: 'Asia/Seoul', HND: 'Asia/Tokyo', NRT: 'Asia/Tokyo', PVG: 'Asia/Shanghai',
+    SYD: 'Australia/Sydney', AKL: 'Pacific/Auckland', PPT: 'Pacific/Tahiti'
+  };
+
+  function tzForAirport(code) {
+    const tz = AIRPORT_TZ[code];
+    if (!tz) throw new Error('Unknown airport "' + code + '" — add it to AIRPORT_TZ in src/icrew.js (never guess a timezone).');
+    return tz;
+  }
+
+  // "AUG13" with no year → pick the year that lands closest to `now`.
+  function resolveYear(monStr, day, now) {
+    const mon = MON[monStr];
+    if (!mon) throw new Error('Bad month "' + monStr + '"');
+    let best = null, bestD = Infinity;
+    for (const y of [-1, 0, 1].map((d) => new Date(now).getUTCFullYear() + d)) {
+      const t = Date.UTC(y, mon - 1, day);
+      const d = Math.abs(t - now);
+      if (d < bestD) { bestD = d; best = y; }
+    }
+    return best + '-' + pad2(mon) + '-' + pad2(day);
+  }
+
+  function parseRotation(text, ctx) {
+    if (!/ROTATION\s+OPER/.test(text) && !/\*RPI\//.test(text)) throw new Error('Not a rotation print (RPI / ROTATION OPER).');
+    const warnings = [];
+    const now = (ctx && ctx.now) || Date.now();
+
+    // header: "A051     POS-AB  EFFECTIVE AUG13" or "A124- 1  POS-B  EFFECTIVE AUG02"
+    // (the "- 1" is a dup number — same pairing, different crew slot)
+    const headRe = /^[ \t]*([A-Z0-9]+?)(?:-\s*(\d+))?\s+POS-(\S+)\s+EFFECTIVE\s+([A-Z]{3})(\d{1,2})/gm;
+    const head = headRe.exec(text);
+    if (!head) throw new Error('Rotation header (EFFECTIVE line) not found.');
+    const rotation = head[1];
+    const dup = head[2] ? +head[2] : null;
+    const position = head[3];
+    const effective = resolveYear(head[4], +head[5], now);
+    // a paste may contain several dup blocks (ROTATION IDENTITY LIST shows them);
+    // parse only the first block so another crew slot's copy can't double-count
+    const head2 = headRe.exec(text);
+    let body = text;
+    if (head2) {
+      body = text.slice(head.index, head2.index);
+      warnings.push('multiple rotation blocks in paste — parsed only the first (' + rotation + (dup ? '-' + dup : '') + ')');
+    }
+
+    // capture moment: "END  19.17 GMT/19AUG" (RPI) or "19AUG/20:58 GMT" (Rotation Display)
+    let captureEpoch = null;
+    const endM = /END\s+(\d{1,2})\.(\d{2})\s+GMT\/(\d{1,2})([A-Z]{3})/.exec(text);
+    if (endM) {
+      const dstr = resolveYear(endM[4], +endM[3], now);
+      captureEpoch = Date.parse(dstr + 'T' + pad2(+endM[1]) + ':' + endM[2] + ':00Z');
+    } else {
+      const hdrM = /(\d{1,2})([A-Z]{3})\/(\d{1,2}):(\d{2})\s*GMT/.exec(text);
+      if (hdrM) {
+        const dstr = resolveYear(hdrM[2], +hdrM[1], now);
+        captureEpoch = Date.parse(dstr + 'T' + pad2(+hdrM[3]) + ':' + hdrM[4] + ':00Z');
+      }
+    }
+
+    // leg rows:  " 14    20  SEA 0019 LHR.1734   9.15 0.35"  (RPI — dot arrival)
+    //            " 22   174  ATL 1820 MXP 0925    9.05"      (Rotation Display — space arrival)
+    //            "  6 D 104  GRU 2245 ATL.0703   9.18 0.23"  (deadhead — T col 'D',
+    //             which prints BEFORE the flight number despite the header order)
+    const legRe = /^\s*(\d{1,2})\s+(?:([A-Z])\s+)?(\d{1,4})\s+(?:([A-Z])\s+)?([A-Z]{3})\s+(\d{4})\s+([A-Z]{3})[.\s]\s*(\d{4})\s+(\d{1,2})\.(\d{2})(?:\s+(\d{1,2})\.(\d{2}))?/;
+    const legs = [];
+    let [year, month] = effective.split('-').map(Number);
+    let prevDay = +effective.split('-')[2];
+
+    for (const line of body.split('\n')) {
+      const m = legRe.exec(line);
+      if (!m) continue;
+      const day = +m[1];
+      if (day < prevDay) { month += 1; if (month > 12) { month = 1; year += 1; } }
+      prevDay = day;
+      const tCode = m[2] || m[4] || null;
+      const flt = m[3];
+      const depDate = year + '-' + pad2(month) + '-' + pad2(day);
+      const dep = m[5], arr = m[7];
+      const depMin = Math.floor(+m[6] / 100) * 60 + (+m[6] % 100);
+      const block = (+m[9]) * 60 + (+m[10]);
+      if (+m[10] > 59) { warnings.push('DL' + flt + ': block minutes ' + m[10] + ' > 59 — misread?'); }
+      const depEpoch = E.epochAt(depDate, depMin, tzForAirport(dep));
+      const arrEpoch = depEpoch + block * 60000;
+
+      // self-check: computed arrival must equal the printed arrival local time
+      const printedArr = pad2(Math.floor(+m[8] / 100)) + ':' + pad2(+m[8] % 100);
+      const computedArr = E.fmtClock(arrEpoch, tzForAirport(arr));
+      if (computedArr !== printedArr) {
+        warnings.push('DL' + flt + ' ' + dep + '-' + arr + ': computed arrival ' + computedArr + ' (' + arr + ' local) ≠ printed ' + printedArr + ' — check block/times/timezone');
+      }
+      legs.push({
+        id: rotation + '-DL' + flt,
+        rotation, flight: 'DL' + flt, pair: dep + '-' + arr,
+        block_minutes: block,
+        block_in: E.isoInTZ(arrEpoch),
+        deadhead: tCode === 'D',   // learned from U004: T column 'D' = deadhead
+        actual: captureEpoch != null ? arrEpoch < captureEpoch : true,
+        bid_period: bidPeriodForDate(E.fmtDate(arrEpoch), ctx && ctx.bidPeriods),
+        makeup_minutes: m[11] != null ? (+m[11]) * 60 + (+m[12]) : undefined,
+        t_code: tCode || undefined
+      });
+    }
+    if (!legs.length) throw new Error('No leg rows parsed — paste the whole rotation print.');
+
+    // footer totals — two variants:
+    //   RPI:              REGULAR- 36.23TL  35.03TBL  1.20TBMU  0.00TDHD  0.00TDMU
+    //   Rotation Display: REGULAR- 35.49TL  35.49BL   0.00CR    0.00MU
+    const totals = {};
+    let found = false;
+    const tm = /REGULAR-\s+(\d+)\.(\d{2})TL\s+(\d+)\.(\d{2})TBL\s+(\d+)\.(\d{2})TBMU\s+(\d+)\.(\d{2})TDHD(?:\s+(\d+)\.(\d{2})TDMU)?/.exec(body);
+    if (tm) {
+      found = true;
+      totals.credit_minutes = (+tm[1]) * 60 + (+tm[2]);
+      totals.block_minutes = (+tm[3]) * 60 + (+tm[4]);
+      totals.makeup_minutes = (+tm[5]) * 60 + (+tm[6]);   // flown makeup only
+      totals.dh_minutes = (+tm[7]) * 60 + (+tm[8]);
+      totals.dh_makeup_minutes = tm[9] != null ? (+tm[9]) * 60 + (+tm[10]) : 0;
+    } else {
+      const alt = /REGULAR-\s+(\d+)\.(\d{2})TL\s+(\d+)\.(\d{2})BL\s+(\d+)\.(\d{2})CR\s+(\d+)\.(\d{2})MU/.exec(body);
+      if (alt) {
+        found = true;
+        totals.credit_minutes = (+alt[1]) * 60 + (+alt[2]);
+        totals.block_minutes = (+alt[3]) * 60 + (+alt[4]);
+        totals.dh_minutes = (+alt[5]) * 60 + (+alt[6]);   // CR column = DH credit (MyCrew convention)
+        totals.makeup_minutes = (+alt[7]) * 60 + (+alt[8]);
+        totals.dh_makeup_minutes = 0;
+      }
+    }
+    if (found) {
+      // block/makeup totals count flown only; deadheads live in TDHD/CR (learned from U004)
+      const sumBlock = legs.filter((l) => !l.deadhead).reduce((a, l) => a + l.block_minutes, 0);
+      if (sumBlock !== totals.block_minutes) {
+        warnings.push('flown leg blocks sum to ' + E.fmtHM(sumBlock) + ' but footer block total is ' + E.fmtHM(totals.block_minutes) + ' — check paste (unmarked deadhead?)');
+      }
+      const sumDH = legs.filter((l) => l.deadhead).reduce((a, l) => a + l.block_minutes, 0);
+      if (sumDH !== totals.dh_minutes) {
+        warnings.push('deadhead blocks sum to ' + E.fmtHM(sumDH) + ' but footer DH total is ' + E.fmtHM(totals.dh_minutes) + ' — check paste');
+      }
+      const sumMu = legs.filter((l) => !l.deadhead).reduce((a, l) => a + (l.makeup_minutes || 0), 0);
+      if (sumMu !== totals.makeup_minutes) warnings.push('flown makeups sum ' + E.fmtHM(sumMu) + ' ≠ footer makeup ' + E.fmtHM(totals.makeup_minutes));
+      const sumDhMu = legs.filter((l) => l.deadhead).reduce((a, l) => a + (l.makeup_minutes || 0), 0);
+      if (sumDhMu !== totals.dh_makeup_minutes) warnings.push('DH makeups sum ' + E.fmtHM(sumDhMu) + ' ≠ footer DH makeup ' + E.fmtHM(totals.dh_makeup_minutes));
+    } else warnings.push('REGULAR- totals line not found — no cross-check possible');
+    const tafb = /TAFB\s+(\d+)\.(\d{2})CR/.exec(body);
+    if (tafb) totals.tafb_minutes = (+tafb[1]) * 60 + (+tafb[2]);
+
+    return { kind: 'rotation', rotation, dup, position, effective, legs, totals, captureEpoch, warnings };
+  }
+
+  function bidPeriodForDate(dateStr, bidPeriods) {
+    const p = (bidPeriods || []).find((x) => x.start <= dateStr && dateStr <= x.end);
+    return p ? p.bid_period : dateStr.slice(0, 7);
+  }
+
+  // Merge rotation legs into the store. Same id → update in place (scheduled →
+  // actual re-paste), preserving hand-added fields like notes and sched block.
+  function mergeLegs(existing, parsed) {
+    const out = existing.slice();
+    const report = [];
+    for (const leg of parsed.legs) {
+      let i = out.findIndex((l) => l.id === leg.id);
+      // fallback: same flight at the same block-in instant = the same leg even if
+      // the stored id used a different rotation-name convention (e.g. A105-2 vs A105-dup2)
+      if (i < 0) i = out.findIndex((l) => l.flight === leg.flight && l.block_in != null && leg.block_in != null &&
+        Date.parse(l.block_in) === Date.parse(leg.block_in));
+      if (i < 0) { out.push(leg); report.push({ id: leg.id, action: 'added' }); }
+      else {
+        const old = out[i];
+        const changed = old.block_minutes !== leg.block_minutes || old.block_in !== leg.block_in || old.actual !== leg.actual;
+        out[i] = Object.assign({}, old, leg, { id: old.id, rotation: old.rotation },
+          old.note ? { note: old.note } : {},
+          old.block_scheduled_minutes != null ? { block_scheduled_minutes: old.block_scheduled_minutes } : {});
+        report.push({ id: old.id, action: changed ? 'updated' : 'unchanged' });
+      }
+    }
+    out.sort((a, b) => (a.block_in ? Date.parse(a.block_in) : 0) - (b.block_in ? Date.parse(b.block_in) : 0));
+    return { legs: out, report };
+  }
+
+  /* ================= Pay Statement =================
+   * "DISPLAY PILOT PAY STATEMENT" — the money document. A * FINAL * one can
+   * close a month: it yields pay hours (PAY metric) plus premium/guarantee.
+   * Hour columns are right-aligned under a stacked header; each H:MM token is
+   * classified by which header column it sits nearest. Dollar arithmetic
+   * (guarantee + other + slips = gross + advance) is verified to the penny. */
+  function parsePayStatement(text, bidPeriods) {
+    if (!/DISPLAY PILOT PAY STATEMENT/.test(text)) throw new Error('Not a PILOT PAY STATEMENT screen.');
+    const warnings = [];
+    const lines = text.replace(/\r/g, '').split('\n');
+    const isFinal = /\*\s*FINAL\s*\*/.test(text);
+
+    const pd = /STMT PAY PD:\s*(\d{2}[A-Z]{3}\d{2})/.exec(text);
+    if (!pd) throw new Error('No STMT PAY PD found.');
+    const start = parseDDMMMYY(pd[1]);
+    let bidPeriod = null, end = null;
+    const bp = (bidPeriods || []).find((p) => p.start === start);
+    if (bp) { bidPeriod = bp.bid_period; end = bp.end; }
+    else {
+      bidPeriod = start.slice(0, 7);
+      warnings.push('bid period with start ' + start + ' not in bid_periods.json — assumed ' + bidPeriod + ' (WRONG for periods starting late in the prior month)');
+    }
+
+    const money = (s) => Math.round(parseFloat(s.replace(/,/g, '')) * 100); // cents
+    const grabMoney = (re, label) => {
+      const m = re.exec(text);
+      if (!m) { warnings.push(label + ' not found'); return null; }
+      return money(m[1]);
+    };
+
+    const hIdx = lines.findIndex((l) => /FLT\s+CRD/.test(l) && /TOTAL/.test(l));
+    if (hIdx < 0) throw new Error('Hour column header (FLT/CRD/...) not found.');
+    const header = lines[hIdx];
+    const cols = {
+      FLT: header.indexOf('FLT'), CRD: header.indexOf('CRD'), UNSK: header.indexOf('UNSK'),
+      NITE: header.indexOf('NITE'), INTL: header.indexOf('INTL'), SRF: header.indexOf('SRF')
+    };
+    const nearestCol = (idx) => {
+      let best = null, bestD = 1e9;
+      for (const k of Object.keys(cols)) {
+        if (cols[k] < 0) continue;
+        const d = Math.abs(idx - cols[k]);
+        if (d < bestD) { bestD = d; best = k; }
+      }
+      return best;
+    };
+
+    const subIdx = lines.findIndex((l) => /SUB TOTALS/.test(l));
+    const guarIdx = lines.findIndex((l) => /RES GUARANTEE/.test(l));
+    const expIdx = lines.findIndex((l) => /PILOT EXPENSE DATA/.test(l));
+
+    const rows = [];
+    for (let i = hIdx + 1; i < (expIdx < 0 ? lines.length : expIdx); i++) {
+      const line = lines[i];
+      if (i === guarIdx || /SUB TOTALS|ADVANCE PAY|GROSS PAY|MEAL EXPENSES/.test(line)) continue;
+      const m = /^\s*(\d{2})([A-Z]{3})\s+(.*?)\s*(\d{2})\s+\d+:\d{2}/.exec(line);
+      if (!m || !MON[m[2]]) continue;
+      const dm = /\$\s*([\d,]+\.\d{2})/.exec(line);
+      const idRaw = m[3];
+      const acknowledged = /\*/.test(idRaw);
+      const id = idRaw.replace(/[*\s]/g, '');
+      // kind suffixes: SP slip · QS quickslip · SCC short-call conversion · RRPY reroute pay
+      const kindM = /(SCC|RRPY|SP|QS)$/.exec(id);
+      const kind = kindM ? kindM[1] : null;
+      const rotation = kind ? (id.slice(0, id.length - kind.length) || null) : (id || null);
+
+      const hours = {};
+      const re = /\d+:\d{2}/g;
+      let t; let first = true;
+      while ((t = re.exec(line))) {
+        if (first) { hours.FLT = E.parseHM(t[0]); first = false; continue; }
+        const col = nearestCol(t.index);
+        if (col && col !== 'FLT') hours[col] = E.parseHM(t[0]);
+      }
+      let dateStr = start.slice(0, 4) + '-' + pad2(MON[m[2]]) + '-' + m[1];
+      if (dateStr < start) dateStr = String(+start.slice(0, 4) + 1) + dateStr.slice(4);
+      rows.push({
+        date: dateStr, id: id || null, rotation, kind, acknowledged, pay_code: m[4],
+        flt_minutes: hours.FLT || 0, crd_minutes: hours.CRD || 0,
+        intl_minutes: hours.INTL || null, nite_minutes: hours.NITE || null,
+        pay_cents: dm ? money(dm[1]) : null,
+        section: subIdx > 0 && i < subIdx ? 'other' : 'slip'
+      });
+    }
+
+    const gm = /RES GUARANTEE\s+(\d+:\d{2})\s+\$\s*([\d,]+\.\d{2})/.exec(text);
+    if (!gm) throw new Error('RES GUARANTEE line not found.');
+    const guarantee_minutes = E.parseHM(gm[1]);
+    const guarantee_cents = money(gm[2]);
+
+    const sub_totals_cents = grabMoney(/SUB TOTALS\s+\$\s*([\d,]+\.\d{2})/, 'SUB TOTALS');
+    const advance_cents = grabMoney(/ADVANCE PAY\s+-\s*\$\s*([\d,]+\.\d{2})/, 'ADVANCE PAY');
+    const gross_cents = grabMoney(/GROSS PAY\s+\$\s*([\d,]+\.\d{2})/, 'GROSS PAY');
+    const meals_cents = grabMoney(/MEAL EXPENSES\s+\$\s*([\d,]+\.\d{2})/, 'MEAL EXPENSES');
+
+    const sum = (sec) => rows.filter((r) => r.section === sec).reduce((a, r) => a + r.flt_minutes + r.crd_minutes, 0);
+    const other_minutes = sum('other');
+    const premium_minutes = sum('slip');
+    const pay_hours_minutes = guarantee_minutes + other_minutes + premium_minutes;
+
+    // penny-exact verification of the statement's own arithmetic
+    const slipCents = rows.filter((r) => r.section === 'slip').reduce((a, r) => a + (r.pay_cents || 0), 0);
+    if (sub_totals_cents != null && gross_cents != null && advance_cents != null) {
+      const lhs = guarantee_cents + sub_totals_cents + slipCents;
+      const rhs = gross_cents + advance_cents;
+      if (lhs !== rhs) warnings.push('dollar check FAILED: guarantee+other+slips = $' + (lhs / 100).toFixed(2) + ' but gross+advance = $' + (rhs / 100).toFixed(2) + ' — paste may be truncated');
+    }
+
+    return {
+      kind: 'pay-statement', is_final: isFinal, bid_period: bidPeriod, start, end,
+      guarantee_minutes, other_minutes, premium_minutes, pay_hours_minutes,
+      guarantee_cents, sub_totals_cents, advance_cents, gross_cents, meals_cents,
+      rows, warnings,
+      meta: { captured_from: 'DISPLAY PILOT PAY STATEMENT' + (isFinal ? ' * FINAL *' : '') }
+    };
+  }
+
+  // Cross-check MTD rotation blocks against the flight log (integrity audit).
+  // Carry-over rule (Ramon, 2026-08-19): BLOCK stays in the month it was flown;
+  // CREDIT (incl. remaining rigs) lands in the follow-on month. So each month's
+  // Time Card row is expected to show that month's in-period block. A whole-trip
+  // match is tolerated but flagged as contradicting the rule.
+  function auditRotations(mtd, legs) {
+    return mtd.rotations.map((r) => {
+      const all = legs.filter((l) => l.rotation === r.rotation && !l.deadhead && l.block_in);
+      const inPeriod = all.filter((l) => l.block_in.slice(0, 10) >= mtd.start && l.block_in.slice(0, 10) <= mtd.end);
+      const inSum = inPeriod.reduce((a, l) => a + l.block_minutes, 0);
+      const allSum = all.reduce((a, l) => a + l.block_minutes, 0);
+      const carryOver = allSum !== inSum;
+      const matchIn = inSum === r.block_minutes;
+      const matchWhole = allSum === r.block_minutes;
+      let detail = null;
+      if (carryOver) {
+        detail = matchIn ? 'carry-over: in-period block matches (block-stays-where-flown ✓)'
+          : matchWhole ? 'carry-over: matched WHOLE-trip block (' + E.fmtHM(allSum) + ') — contradicts block-stays-where-flown rule, verify'
+          : 'carry-over: ' + E.fmtHM(inSum) + ' in-period / ' + E.fmtHM(allSum) + ' whole trip';
+      }
+      return {
+        rotation: r.rotation, mtd_block: r.block_minutes,
+        log_block: matchIn || !carryOver ? inSum : allSum,
+        legs: inPeriod.length, match: matchIn || matchWhole, carryOver, detail
+      };
+    });
+  }
+
+  // Merge parsed days into an existing days array:
+  // replaces entries inside [start..end], keeps everything outside,
+  // carries an old entry's note forward when the paste has none.
+  function mergeDays(existing, parsed) {
+    const byDate = {};
+    for (const d of existing) byDate[d.date] = d;
+    const kept = existing.filter((d) => d.date < parsed.start || d.date > parsed.end);
+    const incoming = parsed.days.map((d) => {
+      const old = byDate[d.date];
+      if (old && old.note && !d.note) return Object.assign({}, d, { note: old.note });
+      return d;
+    });
+    return kept.concat(incoming).sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  // Dispatcher — sniffs which iCrew screen was pasted.
+  function parse(text, ctx) {
+    if (/MONTHLY TIME DATA/.test(text)) return parseMonthlyTimeData(text);
+    if (/DISPLAY PILOT PAY STATEMENT/.test(text)) return parsePayStatement(text, ctx && ctx.bidPeriods);
+    if (/ROTATION\s+OPER/.test(text) || /\*RPI\//.test(text)) return parseRotation(text, ctx);
+    if (/PILOT SCHEDULE/.test(text) || /LOT:/.test(text)) return parseCurrentSchedule(text);
+    throw new Error('Unrecognized paste — supported screens: Current Schedule (PILOT SCHEDULE), Time Card (MONTHLY TIME DATA), Pay Statement (DISPLAY PILOT PAY STATEMENT), Rotation print (ROTATION OPER).');
+  }
+
+  const ICrew = { parse, parseCurrentSchedule, parseMonthlyTimeData, parsePayStatement, parseRotation, mergeLegs, auditRotations, mergeDays, hhDotMM, parseDDMMMYY, AIRPORT_TZ };
+  if (typeof module !== 'undefined' && module.exports) module.exports = ICrew;
+  global.ICrew = ICrew;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+/* ROLLING THUNDER — calendar.js
+ * Seven-column month grid, Sun→Sat. One card per day.
+ * Left rail = 24h clock split proportionally at each event minute.
+ * Card background = Delta MyCrew colors. Rail band color = headroom band. */
+(function (global) {
+  'use strict';
+  const E = global.Engine;
+
+  // Delta MyCrew cross-reference colors (render spec §4)
+  const TYPE_BG = {
+    TRIP: '#1B3E77',                                   // navy — rotation actually flown
+    LC: '#6FBCDE', PB: '#6FBCDE', PR: '#6FBCDE', REST: '#6FBCDE', ADJ: '#6FBCDE',   // light blue
+    XX: '#8B7C4E', GOLDEN: '#8B7C4E', PJRY: '#8B7C4E', JURY: '#8B7C4E', VAC: '#8B7C4E', // tan
+    SC: '#E8792F',                                     // orange — SHORT CALL reserve (MyCrew orange). NOT sick — sick days count as credit and stay light blue.
+    SICK: '#6FBCDE'
+  };
+  const DARK_TEXT_TYPES = { LC: 1, PB: 1, PR: 1, REST: 1, ADJ: 1, XX: 1, GOLDEN: 1, PJRY: 1, JURY: 1, VAC: 1, SC: 1, SICK: 1 };
+  const TYPE_LABEL = { GOLDEN: '**', TRIP: 'TRIP', LC: 'LC', PB: 'PB', PR: 'PR', REST: 'REST', XX: 'XX', PJRY: 'PJRY', JURY: 'JURY', VAC: 'VAC', SC: 'SC', SCC: 'SCC', ADJ: 'ADJ', SICK: 'SICK' };
+
+  // OFF = the day is Ramon's (offense — sellable). DEF = company's to use.
+  function offDef(rec) {
+    if (!rec) return null;
+    if (rec.type === 'TRIP') return null;
+    if (rec.type === 'LC' || rec.type === 'REST' || rec.type === 'ADJ' || rec.type === 'SC') return 'DEF';
+    return 'OFF';
+  }
+
+  function el(tag, cls, text) {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+
+  function daysInMonth(ym) {
+    const [y, m] = ym.split('-').map(Number);
+    return new Date(Date.UTC(y, m, 0)).getUTCDate();
+  }
+  function dow(dateStr) { // 0=Sun, pure calendar arithmetic
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  }
+
+  function renderMonth(ym, ctx) {
+    const [y, m] = ym.split('-').map(Number);
+    const wrap = el('section', 'cal-month');
+    const head = el('header', 'cal-month-head');
+    head.appendChild(el('h2', null, MONTH_NAMES[m - 1] + ' ' + y));
+    const bp = (ctx.bidPeriods || []).find((p) => p.bid_period === ym);
+    if (bp) head.appendChild(el('span', 'cal-bp-note', 'bid period ' + bp.start + ' → ' + bp.end +
+      (bp.guarantee_minutes ? ' · guarantee ' + E.fmtHM(bp.guarantee_minutes) : '')));
+    wrap.appendChild(head);
+
+    const grid = el('div', 'cal-grid');
+    for (const d of ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']) {
+      grid.appendChild(el('div', 'cal-dow', d));
+    }
+    const n = daysInMonth(ym);
+    const first = ym + '-01';
+    for (let i = 0; i < dow(first); i++) grid.appendChild(el('div', 'cal-filler'));
+    for (let d = 1; d <= n; d++) {
+      const dateStr = ym + '-' + String(d).padStart(2, '0');
+      grid.appendChild(dayCard(dateStr, ym, ctx));
+    }
+    wrap.appendChild(grid);
+    return wrap;
+  }
+
+  function dayCard(dateStr, ym, ctx) {
+    const rec = ctx.daysByDate[dateStr];
+    const seg = E.daySegments(ctx.legs, dateStr);
+
+    const card = el('div', 'day-card');
+    const bg = rec ? TYPE_BG[rec.type] : null;
+    if (bg) card.style.background = bg;
+    if (rec && !DARK_TEXT_TYPES[rec.type]) card.classList.add('on-navy');
+    if (!rec) card.classList.add('untyped');
+    if (ctx.todayStr === dateStr) card.classList.add('today');
+
+    // ---- left rail: the 24-hour clock, split at each event minute ----
+    const rail = el('div', 'rail');
+    rail.title = '0000 top → 2400 bottom';
+    seg.segments.forEach((s, i) => {
+      const r = el('div', 'rail-seg');
+      r.style.flexGrow = String(s.minutes);
+      r.style.background = E.band(s.headroom);
+      if (i > 0) r.classList.add('hairline');
+      rail.appendChild(r);
+    });
+    card.appendChild(rail);
+
+    // ---- body ----
+    const body = el('div', 'day-body');
+    const top = el('div', 'day-top');
+    top.appendChild(el('span', 'day-num', String(+dateStr.slice(8))));
+    if (rec) {
+      let badgeTxt = TYPE_LABEL[rec.type] || rec.type;
+      if (rec.type === 'TRIP' && rec.rotation) badgeTxt = rec.rotation;
+      const badge = el('span', 'day-badge', badgeTxt);
+      top.appendChild(badge);
+      if (rec.overlay) top.appendChild(el('span', 'day-badge overlay', TYPE_LABEL[rec.overlay] || rec.overlay));
+      if (rec.type === 'PR' && rec.pr_end) top.appendChild(el('span', 'day-badge overlay', '→' + rec.pr_end));
+    }
+    if (rec && rec.bid_period && rec.bid_period !== ym) {
+      top.appendChild(el('span', 'day-badge bp-tag', rec.bid_period.slice(5) + ' BP'));
+    }
+    body.appendChild(top);
+
+    const od = offDef(rec);
+    body.appendChild(el('div', 'day-label', (od ? od + ' · ' : '') + 'HEADROOM'));
+
+    // one headroom figure per segment, stacked in time order,
+    // with the event clock between them
+    const stack = el('div', 'day-stack');
+    for (const item of seg.timeline) {
+      if (item.type === 'seg') {
+        const f = el('div', 'seg-fig', E.fmtHM(item.seg.headroom));
+        f.style.color = E.band(item.seg.headroom);
+        stack.appendChild(f);
+      } else {
+        const e = item.ev;
+        stack.appendChild(el('div', 'seg-ev',
+          E.fmtClock(e.t) + ' ' + (e.kind === 'IN' ? '▼IN' : '▲OFF') + ' ' + e.leg.flight));
+      }
+    }
+    body.appendChild(stack);
+
+    if (rec && rec.note) {
+      const note = el('div', 'day-note', rec.note.length > 26 ? rec.note.slice(0, 25) + '…' : rec.note);
+      note.title = rec.note;
+      body.appendChild(note);
+    }
+    card.appendChild(body);
+    card.title = dateStr + ' — ' + seg.segments.map((s) =>
+      E.fmtClock(s.from) + '–' + E.fmtClock(s.to === seg.end ? s.to - 1 : s.to) + ' headroom ' + E.fmtHM(s.headroom)).join(' · ');
+    return card;
+  }
+
+  global.Calendar = { renderMonth };
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+/* ROLLING THUNDER — scorecard.js
+ * PAY · O · D slash-line renderer. Three independent metrics, never merged.
+ * Season (year) grouping with averages · YoY by month · provisional vs closed. */
+(function (global) {
+  'use strict';
+  const E = global.Engine;
+
+  function el(tag, cls, text) {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  const f2 = (x) => (x == null ? '—' : x.toFixed(2));
+
+  function slashLine(s) {
+    return f2(s.pay) + ' · ' + f2(s.offense) + ' · ' + f2(s.defense);
+  }
+
+  function render(container, months, opts) {
+    opts = opts || {};
+    container.textContent = '';
+    const sorted = months.slice().sort((a, b) => a.bid_period.localeCompare(b.bid_period));
+    const scored = sorted.map((m) => ({ m, s: E.scorecard(m) }));
+
+    // ---- hero: latest month in progress ----
+    const latest = scored[scored.length - 1];
+    if (latest) {
+      const hero = el('div', 'sc-hero');
+      hero.appendChild(el('div', 'sc-hero-label',
+        latest.m.label + (latest.m.status === 'provisional' ? ' · PROVISIONAL' : ' · CLOSED')));
+      const line = el('div', 'sc-hero-line');
+      for (const [k, name] of [['pay', 'PAY'], ['offense', 'O'], ['defense', 'D']]) {
+        const cell = el('div', 'sc-hero-cell');
+        cell.appendChild(el('div', 'sc-hero-num', f2(latest.s[k])));
+        cell.appendChild(el('div', 'sc-hero-cap', name));
+        line.appendChild(cell);
+      }
+      hero.appendChild(line);
+      hero.appendChild(el('div', 'sc-hero-bench',
+        'benchmark ' + E.fmtHM(E.BENCHMARK_MINUTES) + ' · 1.0 = good on each · never composite'));
+      container.appendChild(hero);
+    }
+
+    // ---- season groups (by calendar year of bid period) ----
+    const years = {};
+    for (const x of scored) {
+      const y = x.m.bid_period.slice(0, 4);
+      (years[y] = years[y] || []).push(x);
+    }
+    for (const y of Object.keys(years).sort()) {
+      const grp = years[y];
+      const sec = el('section', 'sc-season');
+      sec.appendChild(el('h3', null, y + ' season'));
+      const tbl = el('table', 'sc-table');
+      const thead = el('thead');
+      const hr = el('tr');
+      for (const h of ['MONTH', 'PAY', 'O', 'D', '']) hr.appendChild(el('th', null, h));
+      thead.appendChild(hr); tbl.appendChild(thead);
+      const tbody = el('tbody');
+      for (const { m, s } of grp) {
+        const tr = el('tr', m.status === 'provisional' ? 'provisional' : null);
+        if (m.excluded) tr.classList.add('excluded');
+        tr.appendChild(el('td', 'sc-month', m.label));
+        if (m.excluded) {
+          const td = el('td', 'sc-excl', 'excluded — ' + (m.note || 'wash'));
+          td.colSpan = 4; tr.appendChild(td);
+        } else {
+          tr.appendChild(numCell(s.pay, s.computed.pay, best(grp, 'pay') === s.pay));
+          tr.appendChild(numCell(s.offense, s.computed.offense, best(grp, 'offense') === s.offense));
+          tr.appendChild(numCell(s.defense, s.computed.defense, false));
+          const noteTd = el('td', 'sc-note', (m.status === 'provisional' ? '◌ provisional' : '') +
+            (m.note ? (m.status === 'provisional' ? ' · ' : '') + m.note : ''));
+          if (m.status === 'provisional' && opts.onClose) {
+            const btn = el('button', 'btn sc-close', 'close month');
+            btn.onclick = () => opts.onClose(m);
+            noteTd.appendChild(btn);
+          }
+          tr.appendChild(noteTd);
+        }
+        tbody.appendChild(tr);
+      }
+      // per-season averages (excluded months out of averages, kept in the store)
+      const inc = grp.filter((x) => !x.m.excluded);
+      const avg = (k) => {
+        const v = inc.map((x) => x.s[k]).filter((n) => n != null);
+        return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+      };
+      const ar = el('tr', 'sc-avg');
+      ar.appendChild(el('td', 'sc-month', 'AVG'));
+      ar.appendChild(el('td', 'sc-num', f2(avg('pay'))));
+      ar.appendChild(el('td', 'sc-num', f2(avg('offense'))));
+      ar.appendChild(el('td', 'sc-num', f2(avg('defense'))));
+      ar.appendChild(el('td'));
+      tbody.appendChild(ar);
+      tbl.appendChild(tbody);
+      sec.appendChild(tbl);
+      container.appendChild(sec);
+    }
+
+    // ---- year-over-year by month ----
+    const yoy = el('section', 'sc-season');
+    yoy.appendChild(el('h3', null, 'Year over year'));
+    const byMonth = {};
+    for (const x of scored) {
+      const mm = x.m.bid_period.slice(5);
+      (byMonth[mm] = byMonth[mm] || {})[x.m.bid_period.slice(0, 4)] = x;
+    }
+    const yrs = Object.keys(years).sort();
+    const t2 = el('table', 'sc-table');
+    const th2 = el('tr');
+    th2.appendChild(el('th', null, 'MONTH'));
+    for (const y of yrs) th2.appendChild(el('th', null, y + '  PAY · O · D'));
+    const thead2 = el('thead'); thead2.appendChild(th2); t2.appendChild(thead2);
+    const tb2 = el('tbody');
+    const MN = { '01': 'Jan', '02': 'Feb', '03': 'Mar', '04': 'Apr', '05': 'May', '06': 'Jun', '07': 'Jul', '08': 'Aug', '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dec' };
+    for (const mm of Object.keys(byMonth).sort()) {
+      const tr = el('tr');
+      tr.appendChild(el('td', 'sc-month', MN[mm]));
+      for (const y of yrs) {
+        const x = byMonth[mm][y];
+        const td = el('td', 'sc-num');
+        if (!x) td.textContent = '—';
+        else if (x.m.excluded) { td.textContent = 'excl'; td.className = 'sc-excl'; }
+        else {
+          td.textContent = slashLine(x.s);
+          if (x.m.status === 'provisional') { td.classList.add('prov-num'); td.textContent += ' ◌'; }
+        }
+        tr.appendChild(td);
+      }
+      tb2.appendChild(tr);
+    }
+    t2.appendChild(tb2);
+    yoy.appendChild(t2);
+    container.appendChild(yoy);
+  }
+
+  function best(grp, k) {
+    let b = null;
+    for (const x of grp) if (!x.m.excluded && x.s[k] != null && (b == null || x.s[k] > b)) b = x.s[k];
+    return b;
+  }
+  function numCell(v, computed, isBest) {
+    const td = el('td', 'sc-num', f2(v));
+    if (computed) td.title = 'computed from raw inputs';
+    else if (v != null) td.title = 'stored ratio (raw inputs not captured)';
+    if (isBest && v != null) td.classList.add('sc-best');
+    return td;
+  }
+
+  global.Scorecard = { render };
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+/* ROLLING THUNDER — app.js
+ * Boot, data store (embedded JSON / fetch / localStorage overlay),
+ * sanity banner, tabs, trip sizer, leg entry, JSON editors, offline export. */
+(function () {
+  'use strict';
+  const E = window.Engine;
+  const LS_KEY = 'rolling_thunder_data_v1';
+  const COLLECTIONS = ['legs', 'days', 'months', 'bid_periods'];
+
+  const store = { legs: [], days: [], months: [], bid_periods: [] };
+  let embeddedMode = false;
+  let overlayActive = false;
+
+  function $(id) { return document.getElementById(id); }
+  function el(tag, cls, text) {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  /* ---------- data loading ---------- */
+  async function loadData() {
+    embeddedMode = !!$('data-legs');
+    if (embeddedMode) {
+      for (const c of COLLECTIONS) store[c] = JSON.parse($('data-' + c).textContent);
+    } else {
+      for (const c of COLLECTIONS) {
+        const res = await fetch('data/' + c + '.json');
+        if (!res.ok) throw new Error('fetch data/' + c + '.json → ' + res.status);
+        store[c] = await res.json();
+      }
+    }
+    // localStorage overlay: local edits win over shipped data — but ONLY if they
+    // were made against THIS build. Edits saved under an older build would
+    // silently mask newer shipped data, so they are set aside with a notice.
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (saved.build && saved.build !== buildId() && !isShell()) {
+          localStorage.removeItem(LS_KEY);
+          staleOverlayNote = 'local edits from an older version were cleared — this build ships newer data';
+        } else {
+          for (const c of COLLECTIONS) if (saved[c]) store[c] = saved[c];
+          overlayActive = true;
+        }
+      }
+    } catch (e) { /* file:// on iOS may deny localStorage — export is the real persistence */ }
+  }
+
+  let staleOverlayNote = '';
+  function buildInfo() {
+    const tag = $('build-info');
+    return tag ? JSON.parse(tag.textContent) : {};
+  }
+  function buildId() { return buildInfo().built || 'dev'; }
+  // shell mode = the hosted PWA: ships with NO personal data; the device's own
+  // storage is the primary store, so build updates must never clear it
+  function isShell() { return !!buildInfo().shell; }
+
+  function persist() {
+    try {
+      const out = { build: buildId() };
+      for (const c of COLLECTIONS) out[c] = store[c];
+      localStorage.setItem(LS_KEY, JSON.stringify(out));
+      overlayActive = true;
+    } catch (e) { /* ignore */ }
+  }
+
+  /* ---------- sanity banner (§3.5 — fail loudly, before render) ---------- */
+  function runGates() {
+    const dates = dataDateRange();
+    const fails = E.sanityGates(store.legs, dates);
+    const banner = $('sanity-banner');
+    banner.textContent = '';
+    if (fails.length) {
+      banner.classList.add('active');
+      banner.appendChild(el('strong', null, 'SANITY GATE FAILURES — do not trust this render:'));
+      for (const f of fails) banner.appendChild(el('div', null, '· ' + f));
+    } else {
+      banner.classList.remove('active');
+    }
+    return fails;
+  }
+
+  function dataDateRange() {
+    const times = [];
+    for (const l of E.countable(store.legs)) {
+      times.push(E.blockInMs(l), E.ageOffMs(l));
+    }
+    for (const d of store.days) times.push(E.epochAt(d.date, 720));
+    if (!times.length) return [];
+    let d = E.fmtDate(Math.min.apply(null, times));
+    const last = E.fmtDate(Math.max.apply(null, times));
+    const out = [];
+    while (d <= last) { out.push(d); d = E.addDays(d, 1); }
+    return out;
+  }
+
+  /* ---------- calendar view ---------- */
+  const selectedMonths = new Set(['2026-05', '2026-06', '2026-07', '2026-08', '2026-09']);
+
+  function monthsAvailable() {
+    const set = new Set();
+    for (const d of dataDateRange()) set.add(d.slice(0, 7));
+    return Array.from(set).sort();
+  }
+
+  /* ---------- import / backup (device-local; nothing leaves the phone) ---------- */
+  function importDataText(text) {
+    const incoming = {};
+    if (/id="data-legs"/.test(text)) {
+      // a previously exported headroom.html — pull the embedded collections out
+      const re = /<script type="application\/json" id="data-(legs|days|months|bid_periods)">([\s\S]*?)<\/script>/g;
+      let m;
+      while ((m = re.exec(text))) incoming[m[1]] = JSON.parse(m[2]);
+    } else {
+      const obj = JSON.parse(text);
+      for (const c of COLLECTIONS) if (Array.isArray(obj[c])) incoming[c] = obj[c];
+    }
+    if (!incoming.legs || !incoming.legs.length) throw new Error('No flight log found in that file — import your exported headroom.html or a .json backup.');
+    validateLegs(incoming.legs);
+    for (const c of COLLECTIONS) if (incoming[c]) store[c] = incoming[c];
+    persist();
+    const fails = runGates();
+    renderAll();
+    return { legs: store.legs.length, fails };
+  }
+
+  function importFile(ev) {
+    const f = ev.target.files && ev.target.files[0];
+    const msg = $('import-msg');
+    msg.className = 'form-msg';
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const r = importDataText(String(reader.result));
+        msg.classList.add(r.fails.length ? 'err' : 'ok');
+        msg.textContent = r.fails.length ? 'Imported, but sanity gates failed — see banner'
+          : 'Imported ✓ — ' + r.legs + ' legs loaded. This device now carries your data.';
+      } catch (e) {
+        msg.classList.add('err');
+        msg.textContent = String(e.message || e);
+      }
+      ev.target.value = '';
+    };
+    reader.readAsText(f);
+  }
+
+  function downloadBackup() {
+    const out = { backup_of: 'rolling-thunder', build: buildId(), saved_at: new Date().toISOString() };
+    for (const c of COLLECTIONS) out[c] = store[c];
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 1)], { type: 'application/json' }));
+    a.download = 'headroom-data.json';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  }
+
+  function renderCalendar() {
+    const chips = $('month-chips');
+    chips.textContent = '';
+    for (const ym of monthsAvailable()) {
+      const b = el('button', 'chip' + (selectedMonths.has(ym) ? ' on' : ''), ym);
+      b.onclick = () => {
+        selectedMonths.has(ym) ? selectedMonths.delete(ym) : selectedMonths.add(ym);
+        renderCalendar();
+      };
+      chips.appendChild(b);
+    }
+    const host = $('calendar-host');
+    host.textContent = '';
+    if (!store.legs.length) {
+      const empty = el('div', 'form-note');
+      empty.style.padding = '20px 0';
+      empty.textContent = 'No flying data on this device yet. Go to the DATA tab → Import, and load your latest exported headroom.html. After that, everything runs from this device — no internet needed.';
+      host.appendChild(empty);
+      return;
+    }
+    const daysByDate = {};
+    for (const d of store.days) daysByDate[d.date] = d;
+    const todayStr = E.fmtDate(Date.now());
+    const nowLine = el('div', 'now-line');
+    const nowH = E.headroomAt(store.legs, Date.now());
+    nowLine.textContent = 'NOW · ' + todayStr + ' ' + E.fmtClock(Date.now()) + ' ET · headroom ' + E.fmtHM(nowH);
+    nowLine.style.color = E.band(nowH);
+    host.appendChild(nowLine);
+    for (const ym of Array.from(selectedMonths).sort()) {
+      host.appendChild(window.Calendar.renderMonth(ym, {
+        legs: store.legs, daysByDate, bidPeriods: store.bid_periods, todayStr
+      }));
+    }
+    const legend = el('div', 'legend');
+    legend.innerHTML =
+      '<span><i style="background:#D1352B"></i>&lt;10:00</span>' +
+      '<span><i style="background:#E07B2C"></i>10–20</span>' +
+      '<span><i style="background:#E5C33C"></i>20–35</span>' +
+      '<span><i style="background:#3E9E6B"></i>≥35:00</span>' +
+      '<span class="gap"></span>' +
+      '<span><i style="background:#1B3E77"></i>TRIP</span>' +
+      '<span><i style="background:#6FBCDE"></i>LC/PB/REST</span>' +
+      '<span><i style="background:#8B7C4E"></i>XX/**/PJRY</span>';
+    host.appendChild(legend);
+  }
+
+  /* ---------- trip sizer (§3.3) — size prospective trips before bidding ---------- */
+  function runSizer() {
+    const out = $('sizer-out');
+    out.textContent = '';
+    const raw = $('sizer-in').value;
+    let cands;
+    try {
+      if (/ROTATION\s+(OPER|DISPLAY)/.test(raw) || /\*RPI\//.test(raw)) {
+        // a pasted rotation print — parse it for real; NOTHING is added to the log
+        const rot = window.ICrew.parseRotation(raw, { bidPeriods: store.bid_periods });
+        cands = rot.legs.filter((l) => !l.deadhead);
+        out.appendChild(el('p', 'form-note', 'Rotation ' + rot.rotation + (rot.dup ? '-' + rot.dup : '') +
+          ' · effective ' + rot.effective + ' · ' + cands.length + ' flying legs' +
+          (rot.legs.length > cands.length ? ' (+' + (rot.legs.length - cands.length) + ' DH, excluded from cap)' : '') +
+          ' — evaluated only, nothing added to the flight log.'));
+        for (const w of rot.warnings) out.appendChild(el('p', 'sizer-err', '⚠ ' + w));
+      } else {
+        cands = parseSizerInput(raw);
+      }
+    } catch (e) { out.appendChild(el('div', 'sizer-err', String(e.message || e))); return; }
+    if (!cands.length) { out.appendChild(el('div', 'sizer-err', 'No candidate legs parsed.')); return; }
+    // if this exact rotation is somehow already logged, don't double-count it
+    const base = store.legs.filter((l) => !cands.some((c) => c.id === l.id));
+    const r = E.peakWalk(base, cands);
+    const v = el('div', 'sizer-verdict ' + r.verdict.toLowerCase());
+    v.textContent = r.verdict + ' — binding peak ' + E.fmtHM(r.peak) + ' · margin ' + E.fmtHM(r.margin);
+    out.appendChild(v);
+    out.appendChild(el('div', 'sizer-note',
+      'Peak at ' + E.fmtDate(r.peakAt) + ' ' + E.fmtClock(r.peakAt) + ' ET (' + r.peakLeg.flight + ' block-in). ' +
+      'Bands: >100:00 BLGT · 99:31–100:00 Buffer (30-min standoff) · ≤99:30 Clean. ' +
+      'This is the binding-peak number, not any day’s headroom. Planning aid only — Delta’s auditor is authoritative.'));
+    const tbl = el('table', 'sizer-table');
+    const hr = el('tr');
+    for (const h of ['LEG', 'BLOCK', 'BLOCK-IN (ET)', 'ROLLING AT BLOCK-IN']) hr.appendChild(el('th', null, h));
+    tbl.appendChild(hr);
+    for (const w of r.walk) {
+      const tr = el('tr', w.t === r.peakAt ? 'peak-row' : null);
+      tr.appendChild(el('td', null, w.leg.flight + (w.leg.pair ? ' ' + w.leg.pair : '')));
+      tr.appendChild(el('td', null, E.fmtHM(w.leg.block_minutes)));
+      tr.appendChild(el('td', null, E.fmtDate(w.t) + ' ' + E.fmtClock(w.t)));
+      tr.appendChild(el('td', null, E.fmtHM(w.rolling)));
+      tbl.appendChild(tr);
+    }
+    out.appendChild(tbl);
+  }
+
+  // line format: FLIGHT PAIR BLOCK DATE TIME   e.g.  DL20 SEA-LHR 9:15 2026-09-14 12:34
+  function parseSizerInput(text) {
+    const legs = [];
+    for (const raw of text.split('\n')) {
+      const line = raw.trim();
+      if (!line || line.startsWith('#')) continue;
+      const p = line.split(/\s+/);
+      if (p.length < 5) throw new Error('Need "FLIGHT PAIR H:MM YYYY-MM-DD HH:MM" — got: ' + line);
+      const block = E.parseHM(p[2]);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(p[3])) throw new Error('Bad date in: ' + line);
+      const mins = E.parseHM(p[4]);
+      const epoch = E.epochAt(p[3], mins);
+      legs.push({ id: 'CAND-' + p[0], flight: p[0], pair: p[1], block_minutes: block, block_in: E.isoInTZ(epoch), deadhead: false });
+    }
+    return legs;
+  }
+
+  /* ---------- add-leg form ---------- */
+  function addLeg(ev) {
+    ev.preventDefault();
+    const msg = $('leg-msg');
+    msg.textContent = ''; msg.className = 'form-msg';
+    try {
+      const rotation = $('f-rot').value.trim();
+      const flight = $('f-flt').value.trim();
+      const pair = $('f-pair').value.trim().toUpperCase();
+      const dh = $('f-dh').checked;
+      const block = E.parseHM($('f-block').value);      // rejects decimal hours
+      let block_in = null;
+      if (!dh || $('f-date').value) {
+        const date = $('f-date').value;
+        const time = $('f-time').value;
+        if (!date || !time) throw new Error('Block-in date and time are required (block-IN — the arrival moment, never departure; a redeye departing day D blocks in day D+1).');
+        block_in = E.isoInTZ(E.epochAt(date, E.parseHM(time)));
+      }
+      const id = rotation + '-' + flight;
+      if (store.legs.some((l) => l.id === id)) throw new Error('Leg id ' + id + ' already exists (append-only store — edit it in the Data tab instead).');
+      const leg = {
+        id, rotation, flight, pair,
+        block_minutes: block,
+        block_in, deadhead: dh, actual: $('f-actual').checked,
+        bid_period: bidPeriodFor(block_in)
+      };
+      const sched = $('f-sched').value.trim();
+      if (sched) leg.block_scheduled_minutes = E.parseHM(sched);
+      store.legs.push(leg);
+      store.legs.sort((a, b) => (E.blockInMs(a) || 0) - (E.blockInMs(b) || 0));
+      persist();
+      const fails = runGates();
+      renderAll();
+      msg.classList.add('ok');
+      msg.textContent = 'Added ' + id +
+        (block_in ? ' · ages off ' + E.fmtDate(E.blockInMs(leg) + E.WINDOW_MS) + ' ' + E.fmtClock(E.blockInMs(leg) + E.WINDOW_MS) + ' ET' : ' (deadhead, excluded from cap)') +
+        (fails.length ? ' — BUT SANITY GATES FAILED, check banner' : '') +
+        (embeddedMode ? ' — use Export to save a new file' : ' — copy JSON from Data tab back into data/legs.json');
+      ev.target.reset();
+    } catch (e) {
+      msg.classList.add('err');
+      msg.textContent = String(e.message || e);
+    }
+  }
+
+  function bidPeriodFor(blockInISO) {
+    if (!blockInISO) return undefined;
+    const d = E.fmtDate(Date.parse(blockInISO));
+    const p = store.bid_periods.find((x) => x.start <= d && d <= x.end);
+    return p ? p.bid_period : d.slice(0, 7);
+  }
+
+  /* ---------- paste from iCrew (deterministic, no AI) ---------- */
+  let pendingParse = null;
+
+  function pasteParse() {
+    const msg = $('paste-msg');
+    const prev = $('paste-preview');
+    msg.className = 'form-msg'; msg.textContent = '';
+    prev.textContent = '';
+    pendingParse = null;
+    try {
+      const result = window.ICrew.parse($('paste-in').value, { bidPeriods: store.bid_periods });
+      if (result.kind === 'monthly-time-data') { pendingParse = result; previewMTD(result, msg, prev); return; }
+      if (result.kind === 'pay-statement') { pendingParse = result; previewPayStmt(result, msg, prev); return; }
+      if (result.kind === 'rotation') { pendingParse = result; previewRotation(result, msg, prev); return; }
+      pendingParse = result;
+      msg.classList.add('ok');
+      msg.textContent = 'Read OK — ' + result.days.length + ' days, bid period ' + result.bid_period +
+        ' (' + result.start + ' → ' + result.end + ')' +
+        (result.meta.capturedAt ? ', captured ' + result.meta.capturedAt : '');
+
+      const metaBits = [];
+      if (result.meta.act_cred_minutes != null) metaBits.push('reserve credit ' + E.fmtHM(result.meta.act_cred_minutes));
+      if (result.meta.proj_minutes != null) metaBits.push('projected ' + E.fmtHM(result.meta.proj_minutes));
+      if (result.meta.max_pickup_minutes != null) metaBits.push('max pickup ' + E.fmtHM(result.meta.max_pickup_minutes));
+      if (metaBits.length) prev.appendChild(el('p', 'form-note', metaBits.join(' · ')));
+      for (const c of result.meta.cautions) prev.appendChild(el('p', 'form-note', c));
+      for (const w of result.warnings) prev.appendChild(el('p', 'sizer-err', '⚠ ' + w));
+
+      const tbl = el('table', 'sizer-table');
+      const hr = el('tr');
+      for (const h of ['DATE', 'TYPE', 'OVERLAY', 'ROTATION', 'NOTES']) hr.appendChild(el('th', null, h));
+      tbl.appendChild(hr);
+      for (const d of result.days) {
+        const tr = el('tr');
+        tr.appendChild(el('td', null, d.date));
+        tr.appendChild(el('td', null, d.type));
+        tr.appendChild(el('td', null, d.overlay || ''));
+        tr.appendChild(el('td', null, d.rotation || ''));
+        tr.appendChild(el('td', null, d.note || ''));
+        tbl.appendChild(tr);
+      }
+      prev.appendChild(tbl);
+
+      const apply = el('button', 'btn', 'Apply to calendar');
+      apply.onclick = pasteApply;
+      const row = el('div', 'editor-row');
+      row.appendChild(apply);
+      row.appendChild(el('span', 'form-note', 'Replaces day types for ' + result.start + ' → ' + result.end + '; flying log untouched.'));
+      prev.appendChild(row);
+    } catch (e) {
+      msg.classList.add('err');
+      msg.textContent = String(e.message || e);
+    }
+  }
+
+  function previewMTD(r, msg, prev) {
+    msg.classList.add('ok');
+    msg.textContent = 'Read OK — Time Card for ' + r.bid_period + (r.meta.capturedAt ? ', captured ' + r.meta.capturedAt : '');
+
+    const tbl = el('table', 'sizer-table');
+    const add = (k, v) => {
+      const tr = el('tr');
+      tr.appendChild(el('td', null, k));
+      tr.appendChild(el('td', null, v));
+      tbl.appendChild(tr);
+    };
+    add('ALV', E.fmtHM(r.alv_minutes) + ' → guarantee ' + E.fmtHM(E.guaranteeFromALV(r.alv_minutes)));
+    add('Baseline (SUB TTL CREDIT)', E.fmtHM(r.baseline_minutes));
+    add('Premium (all slip pay)', E.fmtHM(r.premium_minutes));
+    add('Reserve credit', E.fmtHM(r.res_credit_minutes));
+    add('OFFENSE preview', (r.premium_minutes / r.baseline_minutes).toFixed(2));
+    add('DEFENSE preview', Math.min(1, 1 - r.res_credit_minutes / r.baseline_minutes).toFixed(2));
+    add('Payback days available', String(r.meta.payback_days_available));
+    if (r.meta.out_bank != null) add('Out bank', E.fmtHM(r.meta.out_bank));
+    prev.appendChild(tbl);
+    prev.appendChild(el('p', 'form-note', 'PAY needs pay-hours from the widgetcrew Time Card — not on this screen.'));
+
+    // integrity audit: MTD rotation blocks vs the flight log
+    const audit = window.ICrew.auditRotations(r, store.legs);
+    const at = el('table', 'sizer-table');
+    const hr = el('tr');
+    for (const h of ['ROTATION', 'MTD BLOCK', 'FLIGHT LOG', 'LEGS', '']) hr.appendChild(el('th', null, h));
+    at.appendChild(hr);
+    for (const a of audit) {
+      const tr = el('tr');
+      tr.appendChild(el('td', null, a.rotation));
+      tr.appendChild(el('td', null, E.fmtHM(a.mtd_block)));
+      tr.appendChild(el('td', null, E.fmtHM(a.log_block)));
+      tr.appendChild(el('td', null, String(a.legs)));
+      tr.appendChild(el('td', null, (a.match ? '✓ matches' : '✗ MISMATCH — legs missing or wrong') + (a.detail ? ' · ' + a.detail : '')));
+      at.appendChild(tr);
+    }
+    prev.appendChild(el('p', 'form-note', 'Audit — this screen’s per-rotation block vs the legs in the flight log:'));
+    prev.appendChild(at);
+    for (const w of r.warnings) prev.appendChild(el('p', 'sizer-err', '⚠ ' + w));
+
+    const apply = el('button', 'btn', 'Apply to scorecard');
+    apply.onclick = pasteApply;
+    const row = el('div', 'editor-row');
+    row.appendChild(apply);
+    row.appendChild(el('span', 'form-note', 'Updates the ' + r.bid_period + ' provisional scorecard record. Closed months are never touched.'));
+    prev.appendChild(row);
+  }
+
+  function applyMTD(r) {
+    let m = store.months.find((x) => x.bid_period === r.bid_period);
+    if (m && m.status === 'closed') {
+      const msg = $('paste-msg');
+      msg.className = 'form-msg err';
+      msg.textContent = r.bid_period + ' is CLOSED — frozen records are never recomputed. Unfreeze it in the Data tab first if this is intentional.';
+      return;
+    }
+    if (!m) {
+      m = { bid_period: r.bid_period, label: monthLabel(r.bid_period), start: r.start, end: r.end, status: 'provisional', excluded: false };
+      store.months.push(m);
+      store.months.sort((a, b) => a.bid_period.localeCompare(b.bid_period));
+    }
+    m.alv_minutes = r.alv_minutes;
+    m.guarantee_minutes = E.guaranteeFromALV(r.alv_minutes);
+    m.baseline_minutes = r.baseline_minutes;
+    m.premium_minutes = r.premium_minutes;
+    m.res_credit_minutes = r.res_credit_minutes;
+    if (m.sick_minutes == null) m.sick_minutes = 0;
+    m.mtd_meta = { captured_at: r.meta.capturedAt, payback_days_available: r.meta.payback_days_available,
+      out_bank_minutes: r.meta.out_bank, slips: r.slips };
+    persist();
+    runGates();
+    renderAll();
+    const msg = $('paste-msg');
+    msg.className = 'form-msg ok';
+    msg.textContent = 'Applied ✓ — ' + r.bid_period + ' scorecard updated (O and D live; PAY still needs widgetcrew pay-hours). ' +
+      (embeddedMode ? 'Use Export to save a new file.' : 'Copy JSON from the Data tab into data/months.json to make it permanent.');
+    $('paste-preview').textContent = '';
+    pendingParse = null;
+  }
+
+  function previewPayStmt(r, msg, prev) {
+    msg.classList.add('ok');
+    msg.textContent = 'Read OK — Pay Statement for ' + r.bid_period + (r.is_final ? '  ★ FINAL' : '  (not final — provisional)');
+
+    const tbl = el('table', 'sizer-table');
+    const add = (k, v) => {
+      const tr = el('tr');
+      tr.appendChild(el('td', null, k));
+      tr.appendChild(el('td', null, v));
+      tbl.appendChild(tr);
+    };
+    const dollars = (c) => c == null ? '—' : '$' + (c / 100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    add('Guarantee', E.fmtHM(r.guarantee_minutes) + ' · ' + dollars(r.guarantee_cents));
+    add('Other pay (SCC/RRPY...)', E.fmtHM(r.other_minutes) + ' · ' + dollars(r.sub_totals_cents));
+    add('Premium (slip rows)', E.fmtHM(r.premium_minutes));
+    add('TOTAL PAY HOURS', E.fmtHM(r.pay_hours_minutes));
+    add('PAY preview', (r.pay_hours_minutes / E.BENCHMARK_MINUTES).toFixed(2));
+    add('OFFENSE preview', (r.premium_minutes / r.guarantee_minutes).toFixed(2) + ' (vs guarantee)');
+    add('Gross pay', dollars(r.gross_cents) + ' (+ advance ' + dollars(r.advance_cents) + ')');
+    prev.appendChild(tbl);
+    if (!r.warnings.some((w) => /dollar check/.test(w)) && r.gross_cents != null) {
+      prev.appendChild(el('p', 'form-note', '✓ dollar arithmetic verified to the penny (guarantee + other + slips = gross + advance)'));
+    }
+
+    const rt = el('table', 'sizer-table');
+    const hr = el('tr');
+    for (const h of ['DATE', 'ROT', 'KIND', 'HRS', 'PAY']) hr.appendChild(el('th', null, h));
+    rt.appendChild(hr);
+    for (const row of r.rows) {
+      const tr = el('tr');
+      tr.appendChild(el('td', null, row.date));
+      tr.appendChild(el('td', null, row.rotation || ''));
+      tr.appendChild(el('td', null, row.kind || ''));
+      tr.appendChild(el('td', null, E.fmtHM(row.flt_minutes + row.crd_minutes)));
+      tr.appendChild(el('td', null, dollars(row.pay_cents)));
+      rt.appendChild(tr);
+    }
+    prev.appendChild(rt);
+    for (const w of r.warnings) prev.appendChild(el('p', 'sizer-err', '⚠ ' + w));
+
+    const apply = el('button', 'btn', 'Apply to scorecard');
+    apply.onclick = pasteApply;
+    const row2 = el('div', 'editor-row');
+    row2.appendChild(apply);
+    row2.appendChild(el('span', 'form-note', r.is_final
+      ? 'FINAL statement — after applying, this month is ready to close on the PAY·O·D tab.'
+      : 'Not final — updates the provisional record only.'));
+    prev.appendChild(row2);
+  }
+
+  function previewRotation(r, msg, prev) {
+    msg.classList.add('ok');
+    msg.textContent = 'Read OK — rotation ' + r.rotation + ' effective ' + r.effective + ', ' + r.legs.length + ' legs' +
+      (r.totals.block_minutes != null ? ', total block ' + E.fmtHM(r.totals.block_minutes) : '');
+
+    const merged = window.ICrew.mergeLegs(store.legs, r);
+    const byId = {};
+    for (const rep of merged.report) byId[rep.id] = rep.action;
+
+    const tbl = el('table', 'sizer-table');
+    const hr = el('tr');
+    for (const h of ['LEG', 'PAIR', 'BLOCK', 'BLOCK-IN (ET)', 'AGES OFF (ET)', 'STATUS']) hr.appendChild(el('th', null, h));
+    tbl.appendChild(hr);
+    for (const leg of r.legs) {
+      const t = E.blockInMs(leg);
+      const off = t + E.WINDOW_MS;
+      const tr = el('tr');
+      tr.appendChild(el('td', null, leg.flight));
+      tr.appendChild(el('td', null, leg.pair));
+      tr.appendChild(el('td', null, E.fmtHM(leg.block_minutes)));
+      tr.appendChild(el('td', null, E.fmtDate(t) + ' ' + E.fmtClock(t)));
+      tr.appendChild(el('td', null, E.fmtDate(off) + ' ' + E.fmtClock(off)));
+      tr.appendChild(el('td', null, (byId[leg.id] || '') + (leg.actual ? '' : ' · scheduled')));
+      tbl.appendChild(tr);
+    }
+    prev.appendChild(tbl);
+    if (!r.warnings.length) {
+      prev.appendChild(el('p', 'form-note', '✓ every computed arrival matches the printed local time · ✓ blocks sum to footer TBL' +
+        (r.totals.credit_minutes != null ? ' · credit ' + E.fmtHM(r.totals.credit_minutes) : '')));
+    }
+    for (const w of r.warnings) prev.appendChild(el('p', 'sizer-err', '⚠ ' + w));
+
+    // what this does to the cap: binding-peak walk with these legs in place
+    const others = store.legs.filter((l) => !r.legs.some((n) => n.id === l.id));
+    const walk = E.peakWalk(others, r.legs);
+    const v = el('p', 'sizer-verdict ' + walk.verdict.toLowerCase());
+    v.textContent = walk.verdict + ' — binding peak ' + E.fmtHM(walk.peak) + ' · margin ' + E.fmtHM(walk.margin);
+    prev.appendChild(v);
+
+    const apply = el('button', 'btn', 'Apply to flight log');
+    apply.onclick = pasteApply;
+    const row = el('div', 'editor-row');
+    row.appendChild(apply);
+    row.appendChild(el('span', 'form-note', 'Existing legs with the same id are updated (scheduled → flown); nothing is ever deleted.'));
+    prev.appendChild(row);
+  }
+
+  function applyRotation(r) {
+    const merged = window.ICrew.mergeLegs(store.legs, r);
+    store.legs = merged.legs;
+    persist();
+    const fails = runGates();
+    renderAll();
+    for (const leg of r.legs) selectedMonths.add(E.fmtDate(E.blockInMs(leg)).slice(0, 7));
+    renderCalendar();
+    const added = merged.report.filter((x) => x.action === 'added').length;
+    const updated = merged.report.filter((x) => x.action === 'updated').length;
+    const msg = $('paste-msg');
+    msg.className = 'form-msg ' + (fails.length ? 'err' : 'ok');
+    msg.textContent = fails.length
+      ? 'Applied, but sanity gates failed — see banner'
+      : 'Applied ✓ — ' + r.rotation + ': ' + added + ' legs added, ' + updated + ' updated, ' +
+        (merged.report.length - added - updated) + ' unchanged. Headroom recomputed. ' +
+        (embeddedMode ? 'Use Export to save a new file.' : 'Copy JSON from the Data tab into data/legs.json to make it permanent.');
+    $('paste-preview').textContent = '';
+    pendingParse = null;
+  }
+
+  function applyPayStmt(r) {
+    let m = store.months.find((x) => x.bid_period === r.bid_period);
+    if (m && m.status === 'closed') {
+      const msg = $('paste-msg');
+      msg.className = 'form-msg err';
+      msg.textContent = r.bid_period + ' is CLOSED — frozen records are never recomputed.';
+      return;
+    }
+    if (!m) {
+      m = { bid_period: r.bid_period, label: monthLabel(r.bid_period), start: r.start, end: r.end || undefined, status: 'provisional', excluded: false };
+      store.months.push(m);
+      store.months.sort((a, b) => a.bid_period.localeCompare(b.bid_period));
+    }
+    m.pay_hours_minutes = r.pay_hours_minutes;
+    // credit-domain fields (premium/baseline) come from the MTD screen when we have
+    // them; the pay statement fills the gap for months that never got an MTD capture
+    if (m.premium_minutes == null) m.premium_minutes = r.premium_minutes;
+    if (m.baseline_minutes == null) m.baseline_minutes = r.guarantee_minutes;
+    m.pay_stmt_meta = {
+      is_final: r.is_final, gross_cents: r.gross_cents, advance_cents: r.advance_cents,
+      meals_cents: r.meals_cents, other_pay_minutes: r.other_minutes
+    };
+    if (r.is_final && m.note && /NEEDS CLOSING/.test(m.note)) m.note = m.note.replace(/NEEDS CLOSING[^.]*\.?\s*/, 'FINAL pay statement applied. ');
+    persist();
+    runGates();
+    renderAll();
+    const msg = $('paste-msg');
+    msg.className = 'form-msg ok';
+    msg.textContent = 'Applied ✓ — ' + r.bid_period + ' now has PAY from the statement' +
+      (r.is_final ? '. FINAL — go to PAY·O·D and press "close month" to freeze it.' : ' (provisional).') +
+      (embeddedMode ? ' Use Export to save a new file.' : ' Copy JSON from the Data tab into data/months.json to make it permanent.');
+    $('paste-preview').textContent = '';
+    pendingParse = null;
+  }
+
+  function pasteApply() {
+    if (!pendingParse) return;
+    const r = pendingParse;
+    if (r.kind === 'monthly-time-data') { applyMTD(r); return; }
+    if (r.kind === 'pay-statement') { applyPayStmt(r); return; }
+    if (r.kind === 'rotation') { applyRotation(r); return; }
+    store.days = window.ICrew.mergeDays(store.days, r);
+    // reserve credit → provisional scorecard record (closed months are never touched)
+    if (r.meta.act_cred_minutes != null) {
+      let m = store.months.find((x) => x.bid_period === r.bid_period);
+      if (!m) {
+        m = { bid_period: r.bid_period, label: monthLabel(r.bid_period), start: r.start, end: r.end, status: 'provisional', excluded: false };
+        store.months.push(m);
+        store.months.sort((a, b) => a.bid_period.localeCompare(b.bid_period));
+      }
+      if (m.status !== 'closed') m.res_credit_minutes = r.meta.act_cred_minutes;
+    }
+    persist();
+    const fails = runGates();
+    renderAll();
+    selectedMonths.add(r.start.slice(0, 7));
+    selectedMonths.add(r.end.slice(0, 7));
+    renderCalendar();
+    const msg = $('paste-msg');
+    msg.className = 'form-msg ' + (fails.length ? 'err' : 'ok');
+    msg.textContent = fails.length ? 'Applied, but sanity gates failed — see banner'
+      : 'Applied ✓ — check the calendar tab. ' + (embeddedMode ? 'Use Export to save a new file.' : 'Copy JSON from the Data tab into data/days.json to make it permanent.');
+    $('paste-preview').textContent = '';
+    pendingParse = null;
+  }
+
+  function monthLabel(bp) {
+    const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return names[+bp.slice(5) - 1] + ' ' + bp.slice(0, 4);
+  }
+
+  /* ---------- JSON editors ---------- */
+  function renderEditors() {
+    const host = $('editors');
+    host.textContent = '';
+    for (const c of COLLECTIONS) {
+      const box = el('div', 'editor');
+      box.appendChild(el('h3', null, 'data/' + c + '.json'));
+      const ta = el('textarea');
+      ta.value = JSON.stringify(store[c], null, 2);
+      ta.spellcheck = false;
+      box.appendChild(ta);
+      const row = el('div', 'editor-row');
+      const msg = el('span', 'form-msg');
+      const apply = el('button', 'btn', 'Validate & apply');
+      apply.onclick = () => {
+        msg.className = 'form-msg';
+        try {
+          const parsed = JSON.parse(ta.value);
+          if (!Array.isArray(parsed)) throw new Error('must be a JSON array');
+          if (c === 'legs') validateLegs(parsed);
+          store[c] = parsed;
+          persist();
+          const fails = runGates();
+          renderAll();
+          msg.classList.add(fails.length ? 'err' : 'ok');
+          msg.textContent = fails.length ? 'Applied, but sanity gates failed — see banner' : 'Applied ✓';
+        } catch (e) {
+          msg.classList.add('err');
+          msg.textContent = String(e.message || e);
+        }
+      };
+      row.appendChild(apply);
+      row.appendChild(msg);
+      box.appendChild(row);
+      host.appendChild(box);
+    }
+    const reset = el('button', 'btn danger', 'Discard local edits (revert to shipped data)');
+    reset.onclick = () => {
+      localStorage.removeItem(LS_KEY);
+      location.reload();
+    };
+    host.appendChild(reset);
+  }
+
+  function validateLegs(legs) {
+    const seen = {};
+    for (const l of legs) {
+      if (!l.id) throw new Error('every leg needs an id');
+      if (seen[l.id]) throw new Error('duplicate leg id ' + l.id);
+      seen[l.id] = 1;
+      if (!Number.isInteger(l.block_minutes)) throw new Error(l.id + ': block_minutes must be integer minutes, never decimal hours');
+      if (l.block_in != null && isNaN(Date.parse(l.block_in))) throw new Error(l.id + ': unparseable block_in');
+      if ('age_off' in l) throw new Error(l.id + ': age_off is derived — remove it');
+    }
+  }
+
+  /* ---------- offline export (§4 — the artifact Ramon carries) ---------- */
+  function exportHTML() {
+    if (!embeddedMode) {
+      alert('Dev mode (external files). Run tools/build.js to produce dist/headroom.html; self-export works from the built artifact.');
+      return;
+    }
+    const clone = document.documentElement.cloneNode(true);
+    for (const c of COLLECTIONS) {
+      const tag = clone.querySelector('#data-' + c);
+      if (tag) tag.textContent = JSON.stringify(store[c]).replace(/</g, '\\u003c');
+    }
+    const blob = new Blob(['<!doctype html>\n' + clone.outerHTML], { type: 'text/html' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'headroom.html';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  }
+
+  /* ---------- tabs & boot ---------- */
+  function showTab(name) {
+    for (const s of document.querySelectorAll('.tab-panel')) s.classList.toggle('active', s.id === 'tab-' + name);
+    for (const b of document.querySelectorAll('.tab-btn')) b.classList.toggle('on', b.dataset.tab === name);
+  }
+
+  function closeMonth(m) {
+    const s = E.scorecard(m);
+    const line = [s.pay, s.offense, s.defense].map((x) => x == null ? '—' : x.toFixed(2)).join(' · ');
+    const missing = s.pay == null ? '\n\nWARNING: PAY is empty (no pay-hours recorded) — it will freeze as blank.' : '';
+    if (!confirm('Close ' + m.label + ' at ' + line + '?\n\nClosed months are FROZEN — no paste or recompute will ever touch them again.' + missing)) return;
+    m.status = 'closed';
+    persist();
+    renderAll();
+  }
+
+  function renderAll() {
+    renderCalendar();
+    window.Scorecard.render($('scorecard-host'), store.months, { onClose: closeMonth });
+    renderEditors();
+    $('overlay-flag').textContent = overlayActive ? '● local edits active' : (staleOverlayNote || '');
+  }
+
+  async function boot() {
+    try {
+      await loadData();
+    } catch (e) {
+      $('sanity-banner').classList.add('active');
+      $('sanity-banner').textContent = 'DATA LOAD FAILED: ' + (e.message || e) +
+        ' — if opened via file://, use the built dist/headroom.html (embedded data) or serve over HTTP.';
+      return;
+    }
+    runGates();
+    renderAll();
+    for (const b of document.querySelectorAll('.tab-btn')) b.onclick = () => showTab(b.dataset.tab);
+    $('sizer-run').onclick = runSizer;
+    $('paste-parse').onclick = pasteParse;
+    $('leg-form').onsubmit = addLeg;
+    $('export-btn').onclick = exportHTML;
+    $('import-file').onchange = importFile;
+    $('backup-btn').onclick = downloadBackup;
+    showTab('calendar');
+
+    // offline engine — hosted shell only (no-op for the file:// personal build)
+    if (isShell() && 'serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', boot);
+})();
+
+</script>
+</body>
+</html>
