@@ -313,7 +313,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<script type="application/json" id="build-info">{"built":"2026-08-20T01:12:58.861Z","shell":true}</script>
+<script type="application/json" id="build-info">{"built":"2026-08-20T23:53:12.208Z","shell":true}</script>
 <script type="application/json" id="data-legs">[]</script>
 <script type="application/json" id="data-days">[]</script>
 <script type="application/json" id="data-months">[]</script>
@@ -1446,7 +1446,8 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
   const TYPE_BG = {
     TRIP: '#1B3E77',                                   // navy — rotation actually flown
     LC: '#6FBCDE', PB: '#6FBCDE', PR: '#6FBCDE', REST: '#6FBCDE', ADJ: '#6FBCDE',   // light blue
-    XX: '#8B7C4E', GOLDEN: '#8B7C4E', PJRY: '#8B7C4E', JURY: '#8B7C4E', VAC: '#8B7C4E', // tan
+    PJRY: '#6FBCDE', JURY: '#6FBCDE',                  // paid jury duty — baby blue in MyCrew (Ramon 2026-08-20), not tan
+    XX: '#8B7C4E', GOLDEN: '#8B7C4E', VAC: '#8B7C4E', // tan
     SC: '#E8792F',                                     // orange — SHORT CALL reserve (MyCrew orange). NOT sick — sick days count as credit and stay light blue.
     SICK: '#6FBCDE'
   };
@@ -1806,7 +1807,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     legend.innerHTML =
       METRICS.map(([, name, c]) => '<span><i style="background:' + c + '"></i>' + name + '</span>').join('') +
       '<span class="gap"></span>' +
-      '<span>● closed · ◌ provisional' + (prev ? ' · dashed = ' + prev : '') + ' · dashed rule = 1.00</span>';
+      '<span>● confirmed · ◌ provisional' + (prev ? ' · dashed = ' + prev : '') + ' · dashed rule = 1.00</span>';
     const readout = el('div', 'sc-chart-readout');
     const box = el('div', 'sc-chart-svg');
     wrap.appendChild(head); wrap.appendChild(legend); wrap.appendChild(readout); wrap.appendChild(box);
@@ -1850,7 +1851,16 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
             if (v == null) { pen = false; continue; }
             path += (pen ? 'L' : 'M') + p2(xi(i)) + ' ' + p2(yv(v));
             pen = true;
-            if (isCur) dots.push({ x: xi(i), y: yv(v), prov: x.m.status === 'provisional' });
+            if (isCur) {
+              // PAY dot: hollow until a pay statement backs the number (timecard estimates
+              // stay hollow even though O/D from the same paste are their real source).
+              const payConfirmed = x.m.pay_source === 'statement' ||
+                (x.m.pay_source == null && x.m.pay_stmt_meta != null);
+              const prov = k === 'pay'
+                ? !(payConfirmed || x.m.status === 'closed')
+                : x.m.status === 'provisional';
+              dots.push({ x: xi(i), y: yv(v), prov });
+            }
           }
           if (!path) continue;
           s += '<path d="' + path + '" fill="none" stroke="' + color + '" stroke-width="' + (isCur ? 2.5 : 1.5) + '"' +
@@ -2315,8 +2325,8 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
       '<span><i style="background:#3E9E6B"></i>≥35:00</span>' +
       '<span class="gap"></span>' +
       '<span><i style="background:#1B3E77"></i>TRIP</span>' +
-      '<span><i style="background:#6FBCDE"></i>LC/PB/REST</span>' +
-      '<span><i style="background:#8B7C4E"></i>XX/**/PJRY</span>';
+      '<span><i style="background:#6FBCDE"></i>LC/PB/REST/PJRY</span>' +
+      '<span><i style="background:#8B7C4E"></i>XX/**</span>';
     host.appendChild(legend);
   }
 
@@ -2665,12 +2675,13 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     add('Baseline (SUB TTL CREDIT)', E.fmtHM(r.baseline_minutes));
     add('Premium (all slip pay)', E.fmtHM(r.premium_minutes));
     add('Reserve credit', E.fmtHM(r.res_credit_minutes));
+    add('PAY preview (timecard est.)', ((r.baseline_minutes + r.premium_minutes) / E.BENCHMARK_MINUTES).toFixed(2));
     add('OFFENSE preview', (r.premium_minutes / r.baseline_minutes).toFixed(2));
     add('DEFENSE preview', Math.min(1, 1 - r.res_credit_minutes / r.baseline_minutes).toFixed(2));
     add('Payback days available', String(r.meta.payback_days_available));
     if (r.meta.out_bank != null) add('Out bank', E.fmtHM(r.meta.out_bank));
     prev.appendChild(tbl);
-    prev.appendChild(el('p', 'form-note', 'PAY needs pay-hours from the widgetcrew Time Card — not on this screen.'));
+    prev.appendChild(el('p', 'form-note', 'PAY here is a timecard estimate (guarantee + credit + slip premium) — the next pay statement confirms it.'));
 
     // integrity audit: MTD rotation blocks vs the flight log
     const audit = window.ICrew.auditRotations(r, store.legs);
@@ -2717,6 +2728,13 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     m.baseline_minutes = r.baseline_minutes;
     m.premium_minutes = r.premium_minutes;
     m.res_credit_minutes = r.res_credit_minutes;
+    // PAY tracks the schedule: SUB TTL + slip premium stands in as provisional PAY until a
+    // pay statement (always more authoritative) replaces it; a FINAL statement is never
+    // overwritten. pay_source 'mtd' keeps the chart dot hollow until a statement confirms.
+    if (!(m.pay_stmt_meta && m.pay_stmt_meta.is_final)) {
+      m.pay_hours_minutes = r.baseline_minutes + r.premium_minutes;
+      m.pay_source = 'mtd';
+    }
     if (m.sick_minutes == null) m.sick_minutes = 0;
     m.mtd_meta = { captured_at: r.meta.capturedAt, payback_days_available: r.meta.payback_days_available,
       out_bank_minutes: r.meta.out_bank, slips: r.slips };
@@ -2725,7 +2743,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     renderAll();
     const msg = $('paste-msg');
     msg.className = 'form-msg ok';
-    msg.textContent = 'Applied ✓ — ' + r.bid_period + ' scorecard updated (O and D live; PAY still needs widgetcrew pay-hours). ' +
+    msg.textContent = 'Applied ✓ — ' + r.bid_period + ' scorecard updated (PAY estimated from timecard; a pay statement will confirm it). ' +
       (embeddedMode ? 'Use Export to save a new file.' : 'Copy JSON from the Data tab into data/months.json to make it permanent.');
     $('paste-preview').textContent = '';
     pendingParse = null;
@@ -2863,6 +2881,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
       store.months.sort((a, b) => a.bid_period.localeCompare(b.bid_period));
     }
     m.pay_hours_minutes = r.pay_hours_minutes;
+    m.pay_source = 'statement';
     // credit-domain fields (premium/baseline) come from the MTD screen when we have
     // them; the pay statement fills the gap for months that never got an MTD capture
     if (m.premium_minutes == null) m.premium_minutes = r.premium_minutes;
