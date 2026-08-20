@@ -141,6 +141,14 @@ body {
 .sc-hero-cap { color: var(--ink-dim); font-size: 11px; letter-spacing: 0.15em; text-align: center; }
 .sc-hero-bench { color: var(--ink-dim); font-size: 10px; margin-top: 8px; }
 
+/* touch surfaces: never let iOS treat a press as text selection (blue
+ * highlight + handles) or pop the long-press callout */
+.sc-chart, .sc-chart *, .day-card, .day-card * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
 .sc-chart { background: var(--panel); border-radius: 6px; padding: 12px 16px 8px; margin: 0 0 20px; max-width: 680px; cursor: pointer; }
 .sc-chart.expanded { max-width: none; cursor: default; box-shadow: 0 8px 26px rgba(0, 0, 0, 0.55); }
 .sc-chart.expanded .sc-chart-svg { touch-action: none; }  /* the finger drives the lens, not the page scroll */
@@ -305,7 +313,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<script type="application/json" id="build-info">{"built":"2026-08-20T01:05:48.003Z","shell":true}</script>
+<script type="application/json" id="build-info">{"built":"2026-08-20T01:12:58.861Z","shell":true}</script>
 <script type="application/json" id="data-legs">[]</script>
 <script type="application/json" id="data-days">[]</script>
 <script type="application/json" id="data-months">[]</script>
