@@ -141,7 +141,12 @@ body {
 .sc-hero-cap { color: var(--ink-dim); font-size: 11px; letter-spacing: 0.15em; text-align: center; }
 .sc-hero-bench { color: var(--ink-dim); font-size: 10px; margin-top: 8px; }
 
-.sc-chart { background: var(--panel); border-radius: 6px; padding: 12px 16px 8px; margin: 0 0 20px; max-width: 680px; }
+.sc-chart { background: var(--panel); border-radius: 6px; padding: 12px 16px 8px; margin: 0 0 20px; max-width: 680px; cursor: pointer; }
+.sc-chart.expanded { max-width: none; cursor: default; box-shadow: 0 8px 26px rgba(0, 0, 0, 0.55); }
+.sc-chart.expanded .sc-chart-svg { touch-action: none; }  /* the finger drives the lens, not the page scroll */
+.sc-chart-head { display: flex; align-items: baseline; gap: 10px; cursor: pointer; }
+.sc-chart-hint { color: var(--ink-dim); font-size: 10px; }
+.sc-chart-readout { color: var(--yellow); font-size: 12px; min-height: 16px; margin: 2px 0 4px; }
 .sc-chart h3 { font-size: 12px; letter-spacing: 0.1em; color: var(--ink-dim); margin: 0 0 6px; }
 .sc-chart-legend { display: flex; gap: 12px; flex-wrap: wrap; color: var(--ink-dim); font-size: 10px; margin-bottom: 6px; }
 .sc-chart-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
@@ -300,7 +305,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<script type="application/json" id="build-info">{"built":"2026-08-20T00:41:24.991Z","shell":true}</script>
+<script type="application/json" id="build-info">{"built":"2026-08-20T01:05:48.003Z","shell":true}</script>
 <script type="application/json" id="data-legs">[]</script>
 <script type="application/json" id="data-days">[]</script>
 <script type="application/json" id="data-months">[]</script>
@@ -1773,6 +1778,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     const yrs = Array.from(new Set(scored.map((x) => x.m.bid_period.slice(0, 4)))).sort();
     const cur = yrs[yrs.length - 1];
     const prev = yrs.length > 1 ? yrs[yrs.length - 2] : null;
+    const MN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
     // value domain across both years, snapped to 0.25s, always including 1.00
     let vmin = 1, vmax = 1;
@@ -1783,63 +1789,135 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     vmin = Math.max(0, Math.floor((vmin - 0.06) * 4) / 4);
     vmax = Math.ceil((vmax + 0.06) * 4) / 4;
 
-    const W = 660, H = 260, L = 46, R = 12, T = 14, B = 30;
-    const pw = W - L - R, ph = H - T - B;
-    const xi = (i) => L + (i + 0.5) * pw / 12;
-    const yv = (v) => T + (vmax - v) / (vmax - vmin) * ph;
-    const p2 = (n) => n.toFixed(1);
-
-    let s = '';
-    // horizontal grid + scale labels
-    for (let g = vmin; g <= vmax + 1e-9; g += 0.25) {
-      const y = yv(g);
-      const isBench = Math.abs(g - 1) < 1e-9;
-      s += '<line x1="' + L + '" y1="' + p2(y) + '" x2="' + (W - R) + '" y2="' + p2(y) +
-        '" stroke="' + (isBench ? '#9AA3B2' : '#242B38') + '" stroke-width="1"' +
-        (isBench ? ' stroke-dasharray="5 4"' : '') + '/>';
-      s += '<text x="' + (L - 6) + '" y="' + p2(y + 3.5) + '" text-anchor="end" fill="' +
-        (isBench ? '#C9D0DC' : '#5B6474') + '" font-size="11">' + g.toFixed(2) + '</text>';
-    }
-    // month labels
-    const MN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    for (let i = 0; i < 12; i++) {
-      s += '<text x="' + p2(xi(i)) + '" y="' + (H - 10) + '" text-anchor="middle" fill="#5B6474" font-size="11">' + MN[i] + '</text>';
-    }
-    // series: prior year first (ghost), current year on top
-    for (const yr of (prev ? [prev, cur] : [cur])) {
-      const isCur = yr === cur;
-      for (const [k, , color] of METRICS) {
-        let path = '', pen = false;
-        const dots = [];
-        for (let i = 0; i < 12; i++) {
-          const x = byYm[yr + '-' + String(i + 1).padStart(2, '0')];
-          const v = x ? x.s[k] : null;
-          if (v == null) { pen = false; continue; }
-          path += (pen ? 'L' : 'M') + p2(xi(i)) + ' ' + p2(yv(v));
-          pen = true;
-          if (isCur) dots.push({ x: xi(i), y: yv(v), prov: x.m.status === 'provisional' });
-        }
-        if (!path) continue;
-        s += '<path d="' + path + '" fill="none" stroke="' + color + '" stroke-width="' + (isCur ? 2.5 : 1.5) + '"' +
-          (isCur ? '' : ' stroke-dasharray="4 4" opacity="0.35"') + '/>';
-        for (const d of dots) {
-          s += '<circle cx="' + p2(d.x) + '" cy="' + p2(d.y) + '" r="4" ' +
-            (d.prov ? 'fill="#171B22" stroke="' + color + '" stroke-width="2"' : 'fill="' + color + '"') + '/>';
-        }
-      }
-    }
-
     const wrap = el('div', 'sc-chart');
+    const head = el('div', 'sc-chart-head');
+    const title = el('h3', null, cur + ' trend');
+    const hint = el('span', 'sc-chart-hint', 'tap to enlarge');
+    head.appendChild(title); head.appendChild(hint);
     const legend = el('div', 'sc-chart-legend');
     legend.innerHTML =
       METRICS.map(([, name, c]) => '<span><i style="background:' + c + '"></i>' + name + '</span>').join('') +
       '<span class="gap"></span>' +
       '<span>● closed · ◌ provisional' + (prev ? ' · dashed = ' + prev : '') + ' · dashed rule = 1.00</span>';
-    wrap.appendChild(el('h3', null, cur + ' trend'));
-    wrap.appendChild(legend);
+    const readout = el('div', 'sc-chart-readout');
     const box = el('div', 'sc-chart-svg');
-    box.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg" role="img">' + s + '</svg>';
-    wrap.appendChild(box);
+    wrap.appendChild(head); wrap.appendChild(legend); wrap.appendChild(readout); wrap.appendChild(box);
+
+    let expanded = false;
+    let geo = null;
+    const p2 = (n) => n.toFixed(1);
+
+    function draw() {
+      // enlarged mode: narrower viewBox + taller plot → everything renders bigger
+      const W = expanded ? 560 : 660, H = expanded ? 430 : 280;
+      const L = 46, R = 12, T = 14, B = 30;
+      const pw = W - L - R, ph = H - T - B;
+      const xi = (i) => L + (i + 0.5) * pw / 12;
+      const yv = (v) => T + (vmax - v) / (vmax - vmin) * ph;
+      geo = { W, H, L, T, pw, ph, xi, yv };
+
+      let s = '<defs><clipPath id="rt-clip"><circle id="rt-clipc" cx="-200" cy="-200" r="128"/></clipPath></defs>';
+      s += '<g id="rt-plot">';
+      s += '<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="#171B22"/>';
+      for (let g = vmin; g <= vmax + 1e-9; g += 0.25) {
+        const y = yv(g);
+        const isBench = Math.abs(g - 1) < 1e-9;
+        s += '<line x1="' + L + '" y1="' + p2(y) + '" x2="' + (W - R) + '" y2="' + p2(y) +
+          '" stroke="' + (isBench ? '#9AA3B2' : '#242B38') + '" stroke-width="1"' +
+          (isBench ? ' stroke-dasharray="5 4"' : '') + '/>';
+        s += '<text x="' + (L - 6) + '" y="' + p2(y + 3.5) + '" text-anchor="end" fill="' +
+          (isBench ? '#C9D0DC' : '#5B6474') + '" font-size="11">' + g.toFixed(2) + '</text>';
+      }
+      for (let i = 0; i < 12; i++) {
+        s += '<text x="' + p2(xi(i)) + '" y="' + (H - 10) + '" text-anchor="middle" fill="#5B6474" font-size="11">' + MN[i] + '</text>';
+      }
+      for (const yr of (prev ? [prev, cur] : [cur])) {
+        const isCur = yr === cur;
+        for (const [k, , color] of METRICS) {
+          let path = '', pen = false;
+          const dots = [];
+          for (let i = 0; i < 12; i++) {
+            const x = byYm[yr + '-' + String(i + 1).padStart(2, '0')];
+            const v = x ? x.s[k] : null;
+            if (v == null) { pen = false; continue; }
+            path += (pen ? 'L' : 'M') + p2(xi(i)) + ' ' + p2(yv(v));
+            pen = true;
+            if (isCur) dots.push({ x: xi(i), y: yv(v), prov: x.m.status === 'provisional' });
+          }
+          if (!path) continue;
+          s += '<path d="' + path + '" fill="none" stroke="' + color + '" stroke-width="' + (isCur ? 2.5 : 1.5) + '"' +
+            (isCur ? '' : ' stroke-dasharray="4 4" opacity="0.35"') + '/>';
+          for (const d of dots) {
+            s += '<circle cx="' + p2(d.x) + '" cy="' + p2(d.y) + '" r="4" ' +
+              (d.prov ? 'fill="#171B22" stroke="' + color + '" stroke-width="2"' : 'fill="' + color + '"') + '/>';
+          }
+        }
+      }
+      s += '</g><g id="rt-hud"></g>';
+      box.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg" ' +
+        'xmlns:xlink="http://www.w3.org/1999/xlink" role="img">' + s + '</svg>';
+      wrap.classList.toggle('expanded', expanded);
+      hint.textContent = expanded ? 'tap title to shrink' : 'tap to enlarge';
+      readout.textContent = expanded ? 'touch & hold the chart — the lens follows your finger' : '';
+      if (expanded) attachLens();
+    }
+
+    function readoutFor(i) {
+      const mm = String(i + 1).padStart(2, '0');
+      const parts = [];
+      for (const yr of (prev ? [cur, prev] : [cur])) {
+        const x = byYm[yr + '-' + mm];
+        parts.push(yr + ' ' + (x ? slashLine(x.s) + (x.m.status === 'provisional' ? ' ◌' : '') : '—'));
+      }
+      return MN[i] + ' — ' + parts.join('  |  ');
+    }
+
+    function attachLens() {
+      const svg = box.querySelector('svg');
+      const hud = svg.querySelector('#rt-hud');
+      const clipc = svg.querySelector('#rt-clipc');
+      const K = 2; // 2x optical magnification
+      const show = (ev) => {
+        const r = svg.getBoundingClientRect();
+        // (tx,ty) = the fingertip — the spot being inspected
+        const tx = Math.max(geo.L, Math.min(geo.W - 12, (ev.clientX - r.left) * geo.W / r.width));
+        const ty = Math.max(geo.T, Math.min(geo.T + geo.ph, (ev.clientY - r.top) * geo.H / r.height));
+        // the glass floats ABOVE the finger so the fingertip never hides the
+        // point of interest (mouse hover keeps the glass centered — no occlusion)
+        const OFF = ev.pointerType === 'mouse' ? 0 : 150;
+        const cx = tx;
+        const cy = Math.max(92, ty - OFF);
+        const i = Math.max(0, Math.min(11, Math.round((tx - geo.L) / (geo.pw / 12) - 0.5)));
+        clipc.setAttribute('cx', cx); clipc.setAttribute('cy', cy);
+        // magnified view anchored to the fingertip: content point (tx,ty)
+        // renders at the center of the glass (cx,cy)
+        const tf = 'translate(' + p2(cx - K * tx) + ' ' + p2(cy - K * ty) + ') scale(' + K + ')';
+        hud.innerHTML =
+          '<line x1="' + p2(geo.xi(i)) + '" y1="' + geo.T + '" x2="' + p2(geo.xi(i)) + '" y2="' + (geo.T + geo.ph) +
+            '" stroke="#E8EAF0" stroke-width="1" opacity="0.45"/>' +
+          '<g clip-path="url(#rt-clip)"><use href="#rt-plot" xlink:href="#rt-plot" transform="' + tf + '"/></g>' +
+          '<circle cx="' + p2(cx) + '" cy="' + p2(cy) + '" r="128" fill="none" stroke="#C9D0DC" stroke-width="1.5"/>';
+        readout.textContent = readoutFor(i);
+      };
+      const clear = () => {
+        hud.innerHTML = '';
+        clipc.setAttribute('cx', -200); clipc.setAttribute('cy', -200);
+        readout.textContent = 'touch & hold the chart — the lens follows your finger';
+      };
+      svg.addEventListener('pointerdown', (e) => { try { svg.setPointerCapture(e.pointerId); } catch (x) {} show(e); });
+      svg.addEventListener('pointermove', (e) => { if (e.pointerType !== 'mouse' && !e.buttons) return; show(e); });
+      svg.addEventListener('pointerup', clear);
+      svg.addEventListener('pointercancel', clear);
+      svg.addEventListener('pointerleave', clear);
+    }
+
+    head.addEventListener('click', (e) => {
+      if (expanded) { expanded = false; draw(); e.stopPropagation(); }
+    });
+    wrap.addEventListener('click', () => {
+      if (!expanded) { expanded = true; draw(); }
+    });
+    draw();
     return wrap;
   }
 
