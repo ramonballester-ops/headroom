@@ -141,6 +141,13 @@ body {
 .sc-hero-cap { color: var(--ink-dim); font-size: 11px; letter-spacing: 0.15em; text-align: center; }
 .sc-hero-bench { color: var(--ink-dim); font-size: 10px; margin-top: 8px; }
 
+.sc-chart { background: var(--panel); border-radius: 6px; padding: 12px 16px 8px; margin: 0 0 20px; max-width: 680px; }
+.sc-chart h3 { font-size: 12px; letter-spacing: 0.1em; color: var(--ink-dim); margin: 0 0 6px; }
+.sc-chart-legend { display: flex; gap: 12px; flex-wrap: wrap; color: var(--ink-dim); font-size: 10px; margin-bottom: 6px; }
+.sc-chart-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.sc-chart-legend .gap { width: 8px; }
+.sc-chart-svg svg { width: 100%; height: auto; display: block; }
+
 .sc-season { margin-bottom: 24px; }
 .sc-season h3 { font-size: 12px; letter-spacing: 0.1em; color: var(--ink-dim); margin: 0 0 6px; }
 .sc-table { border-collapse: collapse; width: 100%; max-width: 640px; }
@@ -229,7 +236,8 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
   display: block; margin-top: 4px; padding-top: 3px;
   border-top: 1px solid rgba(0, 0, 0, 0.3);
 }
-.day-card.untyped.expanded .day-amp { border-top-color: #2A3140; }
+.day-card.untyped.expanded { color: var(--ink); }  /* expanded = reading mode: never dim */
+.day-card.untyped.expanded .day-amp { border-top-color: #4A5468; }
 .amp-head { font-size: 8px; font-weight: 700; letter-spacing: 0.08em; margin-bottom: 2px; }
 .amp-line { font-size: 7.5px; line-height: 1.45; word-break: break-word; }
 .amp-strong { font-weight: 700; }
@@ -237,8 +245,14 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 .amp-dim { opacity: 0.7; margin-top: 1px; }
 
 /* ---- PCS tab — submission-clock calendar + X-day move checker ---- */
+/* PCS tiles carry text on dark backgrounds — full-strength ink, no dimming */
+.pcs-day.untyped { color: var(--ink); }
+.pcs-day .day-label { opacity: 1; font-size: 9.5px; }
+.pcs-day.pcs-deadline-day { background: #6C51B4; }  /* PURPLE — used nowhere else, never reads as a rotation */
+.pcs-day.pcs-info { background: #2C3444; color: var(--ink); }  /* info days: lighter slate */
 .pcs-day.pcs-quiet { min-height: 46px; }
-.pcs-day.pcs-done { opacity: 0.42; }
+.pcs-day.pcs-done { opacity: 0.55; }
+.pcs-day.pcs-done.expanded { opacity: 1; }  /* reading mode: solid, never see-through */
 .pcs-day.pcs-next-day { outline: 2px solid var(--yellow); outline-offset: -2px; }
 .pcs-day.pcs-next-day.expanded { outline: 2px solid var(--yellow); }
 .pcs-day.pcs-xmove { outline: 2px solid var(--green); outline-offset: -2px; }
@@ -286,7 +300,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<script type="application/json" id="build-info">{"built":"2026-08-20T00:04:07.987Z","shell":true}</script>
+<script type="application/json" id="build-info">{"built":"2026-08-20T00:41:24.991Z","shell":true}</script>
 <script type="application/json" id="data-legs">[]</script>
 <script type="application/json" id="data-days">[]</script>
 <script type="application/json" id="data-months">[]</script>
@@ -351,17 +365,6 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
   schedule. <b>Tap a marked day</b> for the full story; tap again to shrink it back.
   Planning aid only — DBMS/PCS is authoritative.</p>
   <div id="pcs-events"></div>
-  <h3>X-day move checker</h3>
-  <p class="form-note">The rule (§12 M.8.f): the X-day you're moving must <b>begin at least 72 hours
-  after</b> your move is awarded, and X-days start at midnight. PCS runs daily at 0700 · 1200 · 1700 ·
-  2200E, so in practice the last run that can award your move is the <b>2200E run four nights before</b>
-  the X-day. Pick the X-day you want to move:</p>
-  <div class="editor-row pcs-form">
-    <label>X-DAY DATE <input type="date" id="pcs-date"></label>
-    <label class="checks"><input type="checkbox" id="pcs-golden"> it's a golden day</label>
-    <button class="btn" id="pcs-check">Check deadline</button>
-  </div>
-  <div id="pcs-out"></div>
 </section>
 
 <section class="tab-panel" id="tab-data">
@@ -1613,7 +1616,8 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     return card;
   }
 
-  global.Calendar = { renderMonth, makeExpandable, DOW_NAMES, MONTH_NAMES, daysInMonth, dow };
+  global.Calendar = { renderMonth, makeExpandable, DOW_NAMES, MONTH_NAMES, daysInMonth, dow,
+    TYPE_BG, TYPE_LABEL, DARK_TEXT_TYPES };
 })(typeof window !== 'undefined' ? window : globalThis);
 
 </script>
@@ -1662,13 +1666,16 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
       container.appendChild(hero);
     }
 
-    // ---- season groups (by calendar year of bid period) ----
+    // ---- trend chart: the year at a glance, prior year ghosted behind ----
+    if (scored.length) container.appendChild(trendChart(scored));
+
+    // ---- season groups (by calendar year of bid period; newest first) ----
     const years = {};
     for (const x of scored) {
       const y = x.m.bid_period.slice(0, 4);
       (years[y] = years[y] || []).push(x);
     }
-    for (const y of Object.keys(years).sort()) {
+    for (const y of Object.keys(years).sort().reverse()) {
       const grp = years[y];
       const sec = el('section', 'sc-season');
       sec.appendChild(el('h3', null, y + ' season'));
@@ -1753,6 +1760,87 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     t2.appendChild(tb2);
     yoy.appendChild(t2);
     container.appendChild(yoy);
+  }
+
+  /* Inline SVG line chart — self-contained, offline, no libraries.
+   * Solid lines + dots = current year (hollow dot = provisional month);
+   * dashed faint lines = prior year; bright dashed rule = the 1.00 benchmark. */
+  const METRICS = [['pay', 'PAY', '#E5C33C'], ['offense', 'O', '#3E9E6B'], ['defense', 'D', '#6FBCDE']];
+
+  function trendChart(scored) {
+    const byYm = {};
+    for (const x of scored) if (!x.m.excluded) byYm[x.m.bid_period] = x;
+    const yrs = Array.from(new Set(scored.map((x) => x.m.bid_period.slice(0, 4)))).sort();
+    const cur = yrs[yrs.length - 1];
+    const prev = yrs.length > 1 ? yrs[yrs.length - 2] : null;
+
+    // value domain across both years, snapped to 0.25s, always including 1.00
+    let vmin = 1, vmax = 1;
+    for (const ym in byYm) for (const [k] of METRICS) {
+      const v = byYm[ym].s[k];
+      if (v != null) { vmin = Math.min(vmin, v); vmax = Math.max(vmax, v); }
+    }
+    vmin = Math.max(0, Math.floor((vmin - 0.06) * 4) / 4);
+    vmax = Math.ceil((vmax + 0.06) * 4) / 4;
+
+    const W = 660, H = 260, L = 46, R = 12, T = 14, B = 30;
+    const pw = W - L - R, ph = H - T - B;
+    const xi = (i) => L + (i + 0.5) * pw / 12;
+    const yv = (v) => T + (vmax - v) / (vmax - vmin) * ph;
+    const p2 = (n) => n.toFixed(1);
+
+    let s = '';
+    // horizontal grid + scale labels
+    for (let g = vmin; g <= vmax + 1e-9; g += 0.25) {
+      const y = yv(g);
+      const isBench = Math.abs(g - 1) < 1e-9;
+      s += '<line x1="' + L + '" y1="' + p2(y) + '" x2="' + (W - R) + '" y2="' + p2(y) +
+        '" stroke="' + (isBench ? '#9AA3B2' : '#242B38') + '" stroke-width="1"' +
+        (isBench ? ' stroke-dasharray="5 4"' : '') + '/>';
+      s += '<text x="' + (L - 6) + '" y="' + p2(y + 3.5) + '" text-anchor="end" fill="' +
+        (isBench ? '#C9D0DC' : '#5B6474') + '" font-size="11">' + g.toFixed(2) + '</text>';
+    }
+    // month labels
+    const MN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    for (let i = 0; i < 12; i++) {
+      s += '<text x="' + p2(xi(i)) + '" y="' + (H - 10) + '" text-anchor="middle" fill="#5B6474" font-size="11">' + MN[i] + '</text>';
+    }
+    // series: prior year first (ghost), current year on top
+    for (const yr of (prev ? [prev, cur] : [cur])) {
+      const isCur = yr === cur;
+      for (const [k, , color] of METRICS) {
+        let path = '', pen = false;
+        const dots = [];
+        for (let i = 0; i < 12; i++) {
+          const x = byYm[yr + '-' + String(i + 1).padStart(2, '0')];
+          const v = x ? x.s[k] : null;
+          if (v == null) { pen = false; continue; }
+          path += (pen ? 'L' : 'M') + p2(xi(i)) + ' ' + p2(yv(v));
+          pen = true;
+          if (isCur) dots.push({ x: xi(i), y: yv(v), prov: x.m.status === 'provisional' });
+        }
+        if (!path) continue;
+        s += '<path d="' + path + '" fill="none" stroke="' + color + '" stroke-width="' + (isCur ? 2.5 : 1.5) + '"' +
+          (isCur ? '' : ' stroke-dasharray="4 4" opacity="0.35"') + '/>';
+        for (const d of dots) {
+          s += '<circle cx="' + p2(d.x) + '" cy="' + p2(d.y) + '" r="4" ' +
+            (d.prov ? 'fill="#171B22" stroke="' + color + '" stroke-width="2"' : 'fill="' + color + '"') + '/>';
+        }
+      }
+    }
+
+    const wrap = el('div', 'sc-chart');
+    const legend = el('div', 'sc-chart-legend');
+    legend.innerHTML =
+      METRICS.map(([, name, c]) => '<span><i style="background:' + c + '"></i>' + name + '</span>').join('') +
+      '<span class="gap"></span>' +
+      '<span>● closed · ◌ provisional' + (prev ? ' · dashed = ' + prev : '') + ' · dashed rule = 1.00</span>';
+    wrap.appendChild(el('h3', null, cur + ' trend'));
+    wrap.appendChild(legend);
+    const box = el('div', 'sc-chart-svg');
+    box.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg" role="img">' + s + '</svg>';
+    wrap.appendChild(box);
+    return wrap;
   }
 
   function best(grp, k) {
@@ -2025,7 +2113,21 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
   }
 
   /* ---------- calendar view ---------- */
-  const selectedMonths = new Set(['2026-05', '2026-06', '2026-07', '2026-08', '2026-09']);
+  // rolling window: two months back through the current month, plus the next
+  // month once we're at/past the 10th (about when its award data starts to
+  // exist). Chips still allow reaching anything older by hand.
+  const selectedMonths = new Set();
+  function ymAdd(ym, n) {
+    let y = +ym.slice(0, 4), m = +ym.slice(5) - 1 + n;
+    y += Math.floor(m / 12); m = ((m % 12) + 12) % 12;
+    return y + '-' + String(m + 1).padStart(2, '0');
+  }
+  function initSelectedMonths() {
+    const today = E.fmtDate(Date.now());
+    const ym = today.slice(0, 7);
+    for (const m of [ymAdd(ym, -2), ymAdd(ym, -1), ym]) selectedMonths.add(m);
+    if (+today.slice(8) >= 10) selectedMonths.add(ymAdd(ym, 1));
+  }
 
   function monthsAvailable() {
     const set = new Set();
@@ -2224,6 +2326,9 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
       'E · earliest X-day still movable: ' + xm.date + ' (72h rule)';
     xmLine.style.color = '#3E9E6B';
     host.appendChild(xmLine);
+    // his real schedule underneath: X days tan, LC/reserve days baby blue, trips navy
+    const daysByDate = {};
+    for (const d of store.days) daysByDate[d.date] = d;
     const months = Array.from(new Set(events.map((e) => e.date.slice(0, 7)))).sort();
     for (const ym of months) {
       const wrap = el('section', 'cal-month');
@@ -2239,26 +2344,39 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
       const n = C.daysInMonth(ym);
       for (let d = 1; d <= n; d++) {
         const dateStr = ym + '-' + String(d).padStart(2, '0');
-        grid.appendChild(pcsDayCard(dateStr, byDate[dateStr], todayStr, nextDl, now, xm));
+        grid.appendChild(pcsDayCard(dateStr, byDate[dateStr], todayStr, nextDl, now, xm, daysByDate[dateStr]));
       }
       wrap.appendChild(grid);
       host.appendChild(wrap);
     }
     const legend = el('div', 'legend');
     legend.innerHTML =
-      '<span><i style="background:#1B3E77"></i>submission deadline</span>' +
-      '<span><i style="background:#1E232C;border:1px solid #3A4356"></i>info day</span>' +
+      '<span><i style="background:#6C51B4"></i>submission deadline</span>' +
+      '<span><i style="background:#2C3444"></i>info day</span>' +
+      '<span><i style="background:#8B7C4E"></i>your X/** days</span>' +
+      '<span><i style="background:#6FBCDE"></i>your LC/PB/REST</span>' +
       '<span><i style="background:#E5C33C"></i>NEXT deadline</span>' +
       '<span><i style="background:#3E9E6B"></i>earliest movable X-day</span>' +
       '<span class="gap"></span><span>tap a marked day for details</span>';
     host.appendChild(legend);
   }
 
-  function pcsDayCard(dateStr, evs, todayStr, nextDl, now, xm) {
+  function pcsDayCard(dateStr, evs, todayStr, nextDl, now, xm, rec) {
+    const C = window.Calendar;
     const isXm = xm && xm.date === dateStr;
-    const card = el('div', 'day-card pcs-day' + (evs || isXm ? '' : ' untyped pcs-quiet'));
-    if (!evs && isXm) card.classList.add('untyped');
+    const card = el('div', 'day-card pcs-day' + (evs || isXm ? '' : ' pcs-quiet'));
     if (todayStr === dateStr) card.classList.add('today');
+    // background: deadline events PURPLE (used nowhere else — never reads as a
+    // rotation) > info events slate > his real day type (XX tan, LC baby blue,
+    // TRIP navy — same MyCrew colors as the headroom calendar) > empty dark
+    const typeBg = rec ? C.TYPE_BG[rec.type] : null;
+    const isDeadline = evs && evs.some((e) => e.kind === 'deadline');
+    if (isDeadline) card.classList.add('pcs-deadline-day', 'on-navy');
+    else if (evs) card.classList.add('pcs-info');
+    else if (typeBg) {
+      card.style.background = typeBg;
+      if (!C.DARK_TEXT_TYPES[rec.type]) card.classList.add('on-navy');
+    } else card.classList.add('untyped');
     const body = el('div', 'day-body');
     const top = el('div', 'day-top');
     top.appendChild(el('span', 'day-num', String(+dateStr.slice(8))));
@@ -2266,11 +2384,14 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
       card.classList.add('pcs-xmove');
       top.appendChild(el('span', 'day-badge xmove-badge', 'X-MOVE'));
     }
+    if (rec) {
+      let typeTxt = C.TYPE_LABEL[rec.type] || rec.type;
+      if (rec.type === 'TRIP' && rec.rotation) typeTxt = rec.rotation;
+      top.appendChild(el('span', 'day-badge' + (evs ? ' overlay' : ''), typeTxt));
+    }
     if (evs) {
-      const isDeadline = evs.some((e) => e.kind === 'deadline');
       const allPast = evs.every((e) => e.past);
       const isNext = nextDl && evs.some((e) => e === nextDl);
-      if (isDeadline) { card.style.background = '#1B3E77'; card.classList.add('on-navy'); }
       if (allPast) card.classList.add('pcs-done');
       if (isNext) card.classList.add('pcs-next-day');
       for (const ev of evs) top.appendChild(el('span', 'day-badge' + (ev.kind === 'deadline' ? '' : ' overlay'), ev.code));
@@ -2291,60 +2412,49 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
       }
     }
     card.appendChild(body);
-    if (evs || isXm) {
-      window.Calendar.makeExpandable(card, () => {
-        const amp = el('div');
-        amp.appendChild(el('div', 'amp-head', window.Calendar.DOW_NAMES[window.Calendar.dow(dateStr)] + ' ' + dateStr));
-        if (isXm) {
-          amp.appendChild(el('div', 'amp-line amp-strong', 'Earliest X-day you can still move'));
-          amp.appendChild(el('div', 'amp-line', 'A move awarded at the next PCS run (' +
-            E.fmtDate(xm.nextRun) + ' ' + E.fmtClock(xm.nextRun) + 'E) satisfies the 72-hour rule (§12 M.8.f) from this day forward. X-days before this date can no longer be moved.'));
+    // every cell is tappable — the expanded panel is the scratchpad of detail:
+    // schedule, events, and this date's X-day-move deadline math
+    window.Calendar.makeExpandable(card, () => {
+      const tapNow = Date.now();
+      const amp = el('div');
+      amp.appendChild(el('div', 'amp-head', window.Calendar.DOW_NAMES[window.Calendar.dow(dateStr)] + ' ' + dateStr));
+      if (rec) amp.appendChild(el('div', 'amp-line amp-dim', 'your schedule this day: ' +
+        (rec.type === 'TRIP' && rec.rotation ? 'rotation ' + rec.rotation : (C.TYPE_LABEL[rec.type] || rec.type)) +
+        (rec.overlay ? ' · ' + rec.overlay : '')));
+      if (isXm) {
+        amp.appendChild(el('div', 'amp-line amp-strong', 'Earliest X-day you can still move'));
+        amp.appendChild(el('div', 'amp-line', 'A move awarded at the next PCS run (' +
+          E.fmtDate(xm.nextRun) + ' ' + E.fmtClock(xm.nextRun) + 'E) satisfies the 72-hour rule (§12 M.8.f) from this day forward. X-days before this date can no longer be moved.'));
+      }
+      for (const ev of (evs || [])) {
+        amp.appendChild(el('div', 'amp-line amp-strong', ev.label));
+        amp.appendChild(el('div', 'amp-line', ev.detail));
+        amp.appendChild(el('div', 'amp-line amp-dim', ev.past ? 'passed' : 'countdown: ' + fmtCountdown(ev.t - now)));
+      }
+      // X-day move math for this date (future dates only — the past can't move)
+      if (dateStr > E.fmtDate(tapNow)) {
+        const r = window.PCS.xdayMove(dateStr, tapNow, store.bid_periods);
+        amp.appendChild(el('div', 'amp-line amp-strong', 'X-day move deadline:'));
+        if (r.tooLate) {
+          const line = el('div', 'amp-line amp-strong', 'TOO LATE — last run was ' +
+            E.fmtDate(r.lastRun) + ' ' + E.fmtClock(r.lastRun) + 'E');
+          line.style.color = '#D1352B';
+          amp.appendChild(line);
+        } else {
+          const line = el('div', 'amp-line amp-strong', E.fmtDate(r.lastRun) + ' ' +
+            E.fmtClock(r.lastRun) + 'E run (' + r.runsLeft + ' run' + (r.runsLeft === 1 ? '' : 's') + ' left)');
+          line.style.color = '#3E9E6B';
+          amp.appendChild(line);
         }
-        for (const ev of (evs || [])) {
-          amp.appendChild(el('div', 'amp-line amp-strong', ev.label));
-          amp.appendChild(el('div', 'amp-line', ev.detail));
-          amp.appendChild(el('div', 'amp-line amp-dim', ev.past ? 'passed' : 'countdown: ' + fmtCountdown(ev.t - now)));
+        if (rec && (rec.type === 'GOLDEN' || rec.overlay === 'GOLDEN')) {
+          amp.appendChild(el('div', 'amp-line', '⚠ golden day: moving it forfeits golden protection'));
         }
-        return amp;
-      });
-    }
+        if (r.lastSix) amp.appendChild(el('div', 'amp-line amp-dim',
+          'last six days of bid period — no moves in/out during PBS award window'));
+      }
+      return amp;
+    });
     return card;
-  }
-
-  function pcsCheck() {
-    const out = $('pcs-out');
-    out.textContent = '';
-    const dateStr = $('pcs-date').value;
-    if (!dateStr) { out.appendChild(el('div', 'sizer-err', 'Pick the date of the X-day you want to move.')); return; }
-    const golden = $('pcs-golden').checked;
-    const now = Date.now();
-    const r = window.PCS.xdayMove(dateStr, now, store.bid_periods);
-    const v = el('div', 'sizer-verdict ' + (r.tooLate ? 'blgt' : 'clean'));
-    v.textContent = r.tooLate
-      ? 'TOO LATE for an automated award — the last qualifying PCS run (' +
-        E.fmtDate(r.lastRun) + ' ' + E.fmtClock(r.lastRun) + 'E) has passed. The 72-hour rule can no longer be met.'
-      : 'Submit before the ' + E.fmtDate(r.lastRun) + ' ' + E.fmtClock(r.lastRun) +
-        'E run — ' + r.runsLeft + ' automated run' + (r.runsLeft === 1 ? '' : 's') + ' left.';
-    out.appendChild(v);
-    const tbl = el('table', 'sizer-table');
-    const add = (k, val) => {
-      const tr = el('tr');
-      tr.appendChild(el('td', null, k));
-      tr.appendChild(el('td', null, val));
-      tbl.appendChild(tr);
-    };
-    add('X-day begins', E.fmtDate(r.xdayStart) + ' 00:00E (X-days start at midnight, §12 M.6)');
-    add('Award needed by', E.fmtDate(r.deadline) + ' ' + E.fmtClock(r.deadline) + 'E (72 hours before, §12 M.8.f)');
-    add('Last qualifying run', E.fmtDate(r.lastRun) + ' ' + E.fmtClock(r.lastRun) + 'E (runs may process late — earlier is safer)');
-    out.appendChild(tbl);
-    const notes = [];
-    if (golden) notes.push('⚠ GOLDEN DAY: a golden day LOSES its golden protection if it is moved (§12 M.9). Move it and it becomes an ordinary X-day.');
-    if (r.lastSix) notes.push('⚠ This X-day falls in the last six days of the bid period — during the PBS award window, moves into or out of those days are not granted (§12 M.8 Note).');
-    notes.push('You can only move a whole X-day block, the first/last day of a block, or an edge run of days that includes the first or last day (§12 M.8.a).');
-    notes.push('No moves into or out of your vacation, and the move can’t create an FAR conflict (§12 M.8.b–c).');
-    notes.push('Widebody limits apply (A330): the move can’t shrink a contiguous stretch of on-call days below the contract minimums (§12 M.8.d–e).');
-    notes.push('Whether it’s GRANTED depends on reserve availability that day (reserves available vs required, §23 V) — only PCS can see that. This checker computes deadlines, not outcomes.');
-    for (const n of notes) out.appendChild(el('p', 'form-note', n));
   }
 
   /* ---------- add-leg form ---------- */
@@ -2834,6 +2944,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
   }
 
   async function boot() {
+    initSelectedMonths();
     try {
       await loadData();
     } catch (e) {
@@ -2846,7 +2957,6 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     renderAll();
     for (const b of document.querySelectorAll('.tab-btn')) b.onclick = () => showTab(b.dataset.tab);
     $('sizer-run').onclick = runSizer;
-    $('pcs-check').onclick = pcsCheck;
     $('paste-parse').onclick = pasteParse;
     $('leg-form').onsubmit = addLeg;
     $('export-btn').onclick = exportHTML;
