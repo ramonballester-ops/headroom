@@ -330,7 +330,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<script type="application/json" id="build-info">{"built":"2026-08-21T00:15:30.741Z","shell":true}</script>
+<script type="application/json" id="build-info">{"built":"2026-08-21T18:22:38.920Z","shell":true}</script>
 <script type="application/json" id="data-legs">[]</script>
 <script type="application/json" id="data-days">[]</script>
 <script type="application/json" id="data-months">[]</script>
@@ -702,6 +702,16 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     return fails;
   }
 
+  /* ---------- rotation removal ----------
+   * The log is append-only EXCEPT for this: a rotation awarded, pasted, then pulled
+   * off the schedule leaves ghost legs that poison future headroom. Removal is
+   * whole-rotation only — never single legs — so history can't be half-deleted. */
+  function removeRotationLegs(legs, rotation) {
+    const kept = [], removed = [];
+    for (const l of legs) (l.rotation === rotation ? removed : kept).push(l);
+    return { legs: kept, removed };
+  }
+
   /* ---------- rail color bands (render spec) ---------- */
   function band(headroomMinutes) {
     if (headroomMinutes < 600) return '#D1352B';    // < 10:00
@@ -716,7 +726,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     fmtHM, fmtClock, fmtDate, isoInTZ, parseHM,
     countable, rollingAt, headroomAt,
     daySegments, peakWalk, scorecard, guaranteeFromALV,
-    sanityGates, band
+    sanityGates, band, removeRotationLegs
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = Engine;
@@ -2960,6 +2970,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
   function renderEditors() {
     const host = $('editors');
     host.textContent = '';
+    renderRotationManager(host);
     for (const c of COLLECTIONS) {
       const box = el('div', 'editor');
       box.appendChild(el('h3', null, 'data/' + c + '.json'));
@@ -2998,6 +3009,55 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
       location.reload();
     };
     host.appendChild(reset);
+  }
+
+  // The only sanctioned way legs ever leave the log: a rotation awarded, pasted,
+  // then pulled off the schedule. Whole rotations only — never single legs.
+  function renderRotationManager(host) {
+    if (!store.legs.length) return;
+    const box = el('div', 'editor');
+    box.appendChild(el('h3', null, 'Rotations in the flight log'));
+    box.appendChild(el('p', 'form-note', 'Delete a rotation you will not fly (awarded, pasted, then lost). Deleting removes its legs from the headroom math. Two taps required.'));
+    const tbl = el('table', 'sizer-table');
+    const hd = el('tr');
+    for (const h of ['ROTATION', 'LEGS', 'DATES', 'BLOCK', '']) hd.appendChild(el('th', null, h));
+    tbl.appendChild(hd);
+    const groups = {};
+    for (const l of store.legs) {
+      const key = l.rotation || '(no rotation)';
+      (groups[key] = groups[key] || []).push(l);
+    }
+    for (const key of Object.keys(groups).sort()) {
+      const legs = groups[key];
+      const dates = legs.map((l) => E.fmtDate(E.blockInMs(l))).sort();
+      const block = legs.reduce((a, l) => a + (l.deadhead ? 0 : l.block_minutes), 0);
+      const tr = el('tr');
+      tr.appendChild(el('td', null, key));
+      tr.appendChild(el('td', null, String(legs.length)));
+      tr.appendChild(el('td', null, dates[0] + (dates.length > 1 ? ' → ' + dates[dates.length - 1] : '')));
+      tr.appendChild(el('td', null, E.fmtHM(block)));
+      const td = el('td');
+      const del = el('button', 'btn danger', 'delete');
+      let armed = false;
+      del.onclick = () => {
+        if (!armed) {
+          armed = true;
+          del.textContent = 'tap again — delete ' + legs.length + (legs.length === 1 ? ' leg' : ' legs');
+          setTimeout(() => { armed = false; del.textContent = 'delete'; }, 6000); // disarm if he walks away
+          return;
+        }
+        const r = E.removeRotationLegs(store.legs, legs[0].rotation);
+        store.legs = r.legs;
+        persist();
+        runGates();
+        renderAll(); // row vanishes + calendars recompute = the confirmation
+      };
+      td.appendChild(del);
+      tr.appendChild(td);
+      tbl.appendChild(tr);
+    }
+    box.appendChild(tbl);
+    host.appendChild(box);
   }
 
   function validateLegs(legs) {
