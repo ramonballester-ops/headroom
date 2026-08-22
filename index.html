@@ -330,11 +330,11 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<script type="application/json" id="build-info">{"built":"2026-08-21T18:22:38.920Z","shell":true}</script>
+<script type="application/json" id="build-info">{"built":"2026-08-22T21:33:03.934Z","shell":true}</script>
 <script type="application/json" id="data-legs">[]</script>
 <script type="application/json" id="data-days">[]</script>
 <script type="application/json" id="data-months">[]</script>
-<script type="application/json" id="data-bid_periods">[{"bid_period":"2025-12","start":"2025-12-01","end":"2025-12-31"},{"bid_period":"2026-01","start":"2026-01-01","end":"2026-01-31"},{"bid_period":"2026-02","start":"2026-02-01","end":"2026-03-01"},{"bid_period":"2026-03","start":"2026-03-02","end":"2026-03-31"},{"bid_period":"2026-04","start":"2026-04-01","end":"2026-05-01"},{"bid_period":"2026-05","start":"2026-05-02","end":"2026-06-01"},{"bid_period":"2026-06","start":"2026-06-02","end":"2026-07-01"},{"bid_period":"2026-07","start":"2026-07-02","end":"2026-07-31"},{"bid_period":"2026-08","start":"2026-08-01","end":"2026-08-30"},{"bid_period":"2026-09","start":"2026-08-31","end":"2026-09-30","alv_minutes":4884,"guarantee_minutes":4764,"note":"31 days. ALV 81:24 → guarantee 79:24. Award posted 17 Aug; day types beyond 31 Aug pending capture."}]</script>
+<script type="application/json" id="data-bid_periods">[{"bid_period":"2025-12","start":"2025-12-01","end":"2025-12-31"},{"bid_period":"2026-01","start":"2026-01-01","end":"2026-01-31"},{"bid_period":"2026-02","start":"2026-02-01","end":"2026-03-01"},{"bid_period":"2026-03","start":"2026-03-02","end":"2026-03-31"},{"bid_period":"2026-04","start":"2026-04-01","end":"2026-05-01"},{"bid_period":"2026-05","start":"2026-05-02","end":"2026-06-01"},{"bid_period":"2026-06","start":"2026-06-02","end":"2026-07-01"},{"bid_period":"2026-07","start":"2026-07-02","end":"2026-07-31"},{"bid_period":"2026-08","start":"2026-08-01","end":"2026-08-30"},{"bid_period":"2026-09","start":"2026-08-31","end":"2026-09-30"}]</script>
 </head>
 <body>
 <div id="sanity-banner"></div>
@@ -447,7 +447,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
   const WINDOW_MS = 672 * 3600 * 1000;      // exactly 28 days
   const MIN_MS = 60000;
   const TZ = 'America/New_York';            // display zone — never the device zone
-  const BENCHMARK_MINUTES = 7062;           // 117.7h — trailing 3-yr avg (2023: 111.5 · 2024: 126.5 · 2025: 115.1). Recompute each January.
+  const BENCHMARK_MINUTES = 7062;           // 117:42 — the PAY denominator: a trailing 3-year average of monthly pay hours. Recompute each January.
   const AWARD_CEILING_MINUTES = 5970;       // 99:30 — practical award ceiling (30-min standoff)
 
   /* ---------- time helpers ---------- */
@@ -659,6 +659,25 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     return Math.min(4800, Math.max(4320, alvMinutes - 120)); // ALV − 2:00, floor 72:00, ceiling 80:00
   }
 
+  /* ---------- impossible-overlap detector ----------
+   * A leg occupies [block_in − block_minutes, block_in]. One pilot cannot be in
+   * two airplanes at once, so any overlap means the log holds a leg that is not
+   * really his — the classic case being a rotation pulled off the schedule whose
+   * legs were never deleted. Deadheads count: he is still in a seat.
+   * Touching endpoints (block-in == the next leg's block-out) is a legal turn. */
+  function legOverlaps(legs) {
+    const spans = legs
+      .filter((l) => l.block_in != null && Number.isInteger(l.block_minutes))
+      .map((l) => ({ leg: l, out: blockInMs(l) - l.block_minutes * MIN_MS, in: blockInMs(l) }))
+      .sort((a, b) => a.out - b.out || a.in - b.in);
+    const hits = [];
+    for (let i = 1; i < spans.length; i++) {
+      const prev = spans[i - 1], cur = spans[i];
+      if (cur.out < prev.in) hits.push({ a: prev.leg, b: cur.leg, minutes: Math.round((prev.in - cur.out) / MIN_MS) });
+    }
+    return hits;
+  }
+
   /* ---------- sanity gates (§3.5) — run before any render ---------- */
   function sanityGates(legs, dateStrs) {
     const fails = [];
@@ -675,6 +694,12 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
       if (!l.deadhead && l.block_in == null) {
         fails.push(l.id + ': non-deadhead leg with no block_in');
       }
+    }
+
+    // Two legs cannot overlap in time — a ghost rotation is the usual cause
+    for (const o of legOverlaps(legs)) {
+      fails.push(o.a.id + ' and ' + o.b.id + ' overlap by ' + fmtHM(o.minutes) +
+        ' — one pilot, two airplanes. A rotation pulled off the schedule was probably never deleted (Data tab → Rotations in the flight log).');
     }
 
     // No moment shows rolling > 100:00 from flown legs
@@ -726,7 +751,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     fmtHM, fmtClock, fmtDate, isoInTZ, parseHM,
     countable, rollingAt, headroomAt,
     daySegments, peakWalk, scorecard, guaranteeFromALV,
-    sanityGates, band, removeRotationLegs
+    sanityGates, band, removeRotationLegs, legOverlaps
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = Engine;
@@ -762,8 +787,8 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
   const MON = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
   const OFF_TYPE = { '**': 'GOLDEN', 'XX': 'XX', 'PB': 'PB', 'PR': 'PR' };
 
-  // Official iCrew reason codes (legend provided by Ramon 2026-08-19).
-  // Ramon lives in the G / F / H premium-capture categories.
+  // Official iCrew reason codes (legend captured from the crew portal 2026-08-19).
+  // The premium-capture categories that matter here are G / F / H.
   // Blank on an assigned rotation = normal reserve assignment — works against
   // the guarantee, no extra pay (a "losing assignment").
   const REASON = {
@@ -1403,7 +1428,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
   }
 
   // Cross-check MTD rotation blocks against the flight log (integrity audit).
-  // Carry-over rule (Ramon, 2026-08-19): BLOCK stays in the month it was flown;
+  // Carry-over rule (confirmed 2026-08-19): BLOCK stays in the month it was flown;
   // CREDIT (incl. remaining rigs) lands in the follow-on month. So each month's
   // Time Card row is expected to show that month's in-period block. A whole-trip
   // match is tolerated but flagged as contradicting the rule.
@@ -1473,7 +1498,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
   const TYPE_BG = {
     TRIP: '#1B3E77',                                   // navy — rotation actually flown
     LC: '#6FBCDE', PB: '#6FBCDE', PR: '#6FBCDE', REST: '#6FBCDE', ADJ: '#6FBCDE',   // light blue
-    PJRY: '#6FBCDE', JURY: '#6FBCDE',                  // paid jury duty — baby blue in MyCrew (Ramon 2026-08-20), not tan
+    PJRY: '#6FBCDE', JURY: '#6FBCDE',                  // paid jury duty — baby blue in MyCrew (verified 2026-08-20), not tan
     XX: '#8B7C4E', GOLDEN: '#8B7C4E', VAC: '#8B7C4E', // tan
     SC: '#E8792F',                                     // orange — SHORT CALL reserve (MyCrew orange). NOT sick — sick days count as credit and stay light blue.
     SICK: '#6FBCDE'
@@ -1481,7 +1506,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
   const DARK_TEXT_TYPES = { LC: 1, PB: 1, PR: 1, REST: 1, ADJ: 1, XX: 1, GOLDEN: 1, PJRY: 1, JURY: 1, VAC: 1, SC: 1, SICK: 1 };
   const TYPE_LABEL = { GOLDEN: '**', TRIP: 'TRIP', LC: 'LC', PB: 'PB', PR: 'PR', REST: 'REST', XX: 'XX', PJRY: 'PJRY', JURY: 'JURY', VAC: 'VAC', SC: 'SC', SCC: 'SCC', ADJ: 'ADJ', SICK: 'SICK' };
 
-  // OFF = the day is Ramon's (offense — sellable). DEF = company's to use.
+  // OFF = the day is the pilot's (offense — sellable). DEF = company's to use.
   function offDef(rec) {
     if (!rec) return null;
     if (rec.type === 'TRIP') return null;
@@ -3003,8 +3028,16 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
       box.appendChild(row);
       host.appendChild(box);
     }
-    const reset = el('button', 'btn danger', 'Discard local edits (revert to shipped data)');
+    // On the hosted shell there IS no shipped data — legs/days/months ship empty
+    // and the device's storage is the only copy. "Revert" there means ERASE, so
+    // the button says so and makes him type it out.
+    const wipes = isShell();
+    const reset = el('button', 'btn danger',
+      wipes ? 'ERASE all data on this device' : 'Discard local edits (revert to shipped data)');
     reset.onclick = () => {
+      if (wipes) {
+        if (prompt('This deletes your entire flight log from this device. There is no shipped copy to fall back on and no undo.\n\nDownload a backup first if you have not.\n\nType ERASE to confirm:') !== 'ERASE') return;
+      } else if (!confirm('Discard local edits and revert to the data shipped in this build?')) return;
       localStorage.removeItem(LS_KEY);
       location.reload();
     };
@@ -3072,7 +3105,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     }
   }
 
-  /* ---------- offline export (§4 — the artifact Ramon carries) ---------- */
+  /* ---------- offline export (§4 — the artifact carried on the line) ---------- */
   function exportHTML() {
     if (!embeddedMode) {
       alert('Dev mode (external files). Run tools/build.js to produce dist/headroom.html; self-export works from the built artifact.');
