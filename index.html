@@ -324,13 +324,16 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 .day-card.expanded .amp-head { font-size: 11px; }
 .day-card.expanded .amp-line { font-size: 10.5px; line-height: 1.45; }
 
+/* COMMUTER tab — embedded encrypted dashboard (hangar) */
+#commuter-frame{width:100%;height:72vh;border:0;border-radius:10px;background:#0d1117;display:block}
+
 </style>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<script type="application/json" id="build-info">{"built":"2026-08-22T21:33:03.934Z","shell":true}</script>
+<script type="application/json" id="build-info">{"built":"2026-08-25T20:22:54.541Z","shell":true}</script>
 <script type="application/json" id="data-legs">[]</script>
 <script type="application/json" id="data-days">[]</script>
 <script type="application/json" id="data-months">[]</script>
@@ -352,6 +355,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
   <button class="tab-btn" data-tab="scorecard">PAY·O·D</button>
   <button class="tab-btn" data-tab="sizer">TRIP SIZER</button>
   <button class="tab-btn" data-tab="pcs">PCS</button>
+  <button class="tab-btn" data-tab="commuter">COMMUTER</button>
   <button class="tab-btn" data-tab="data">DATA</button>
 </nav>
 
@@ -395,6 +399,15 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
   schedule. <b>Tap a marked day</b> for the full story; tap again to shrink it back.
   Planning aid only — DBMS/PCS is authoritative.</p>
   <div id="pcs-events"></div>
+</section>
+
+<section class="tab-panel" id="tab-commuter">
+  <h3>Commuter &middot; premium-supply intel</h3>
+  <p class="form-note">ATL-330-B demand side: local-pilot estimator, premium pickups, hunter pay
+  ranking, Jan 2027 staffing gap. Loads the <b>encrypted</b> hosted dashboard &mdash; passphrase
+  required, internet required. Data never lives in this app.
+  <a href="https://ramonballester-ops.github.io/hangar/" target="_blank" rel="noopener">Open full-screen &#8599;</a></p>
+  <iframe id="commuter-frame" data-src="https://ramonballester-ops.github.io/hangar/" title="Commuter dashboard"></iframe>
 </section>
 
 <section class="tab-panel" id="tab-data">
@@ -3130,6 +3143,10 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     for (const s of document.querySelectorAll('.tab-panel')) s.classList.toggle('active', s.id === 'tab-' + name);
     for (const b of document.querySelectorAll('.tab-btn')) b.classList.toggle('on', b.dataset.tab === name);
     if (name === 'pcs') renderPCS(); // countdowns are live — recompute on every visit
+    if (name === 'commuter') { // lazy: don't fetch the hosted page until the tab is opened
+      const f = $('commuter-frame');
+      if (f && !f.src) f.src = f.dataset.src;
+    }
   }
 
   // keep the PCS countdowns and the green X-MOVE ring honest even if the app
