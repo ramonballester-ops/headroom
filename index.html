@@ -333,7 +333,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<script type="application/json" id="build-info">{"built":"2026-08-30T19:17:43.459Z","shell":true}</script>
+<script type="application/json" id="build-info">{"built":"2026-08-30T23:36:07.154Z","shell":true}</script>
 <script type="application/json" id="data-legs">[]</script>
 <script type="application/json" id="data-days">[]</script>
 <script type="application/json" id="data-months">[]</script>
@@ -2210,6 +2210,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
   const H30 = 30 * HOUR;
   const H138 = 138 * HOUR; // 168 − 30
   const MAX_SCAN_DAYS = 9;
+  const RESTED_MAX_DAYS = 6; // fully rested: 138h after report = 6 duty days
   const EARLIEST_REPORT_MIN = 5 * 60; // planning assumption: no report before 0500L
   const PRE_DATA_REST = 400 * HOUR;   // assume long rest before the first known duty
 
@@ -2296,19 +2297,28 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     const rests = restWindows(blocks, dayStart + PRE_DATA_REST);
 
     const earliestReport = E.epochAt(dateStr, EARLIEST_REPORT_MIN);
-    let R = earliestReport;
-    let reportAfter = null;
     const ongoing = rests.find((r) => r.from < dayEnd && r.to > dayStart);
-    if (ongoing) {
+    if (ongoing && ongoing.from + H30 <= dayEnd) {
+      // FULLY RESTED: the 30h rest runs right up to the report itself, so the
+      // 138h window starts at the actual report — whenever that is. Every FDP
+      // in the first 138h after report is covered: a 6-day trip always fits
+      // (day-6 duty would have to start >18h later in the day than the report
+      // to bust); a 7-day fits only the other way around (late report, early
+      // day-7 duty). Being MORE rested can never show fewer days.
       const complete = ongoing.from + H30;
-      if (complete > earliestReport && complete <= dayEnd) { reportAfter = complete; R = complete; }
+      return {
+        date: dateStr, fullDays: RESTED_MAX_DAYS, marginal: null, fresh: true,
+        reportAfter: complete > earliestReport ? complete : null,
+        legalThrough: null
+      };
     }
 
-    // clip rest at the report — then each qualifying (≥30h) window supports
-    // FDP starts through its end + 138h
+    // STALE REST: legality hangs on a rest that already ENDED, so the 138h
+    // horizon is an absolute clock time. Worst-case report (0500) for the clip.
+    let reportAfter = null;
     let cutoff = -Infinity;
     for (const r of rests) {
-      const to = Math.min(r.to, R);
+      const to = Math.min(r.to, earliestReport);
       if (to - r.from >= H30) cutoff = Math.max(cutoff, to + H138);
     }
 
@@ -2909,6 +2919,9 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
           ' · ' + offRem + ' off day' + (offRem === 1 ? '' : 's') + ' left in this block');
         line.style.color = restColor;
         amp.appendChild(line);
+        if (restA.fresh) amp.appendChild(el('div', 'amp-line amp-dim',
+          'fully rested — the 138h window runs from your actual report, so 6 days always fit; ' +
+          'a 7-day fits only off a late report with early day-7 duty'));
         if (restA.marginal) amp.appendChild(el('div', 'amp-line', 'day-' + restA.marginal.day +
           ' works too if its duty starts before ' + E.fmtClock(restA.marginal.by) + ' on ' + E.fmtDate(restA.marginal.by)));
         if (restA.reportAfter) amp.appendChild(el('div', 'amp-line',
