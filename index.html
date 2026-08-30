@@ -333,7 +333,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<script type="application/json" id="build-info">{"built":"2026-08-25T20:22:54.541Z","shell":true}</script>
+<script type="application/json" id="build-info">{"built":"2026-08-30T19:17:43.459Z","shell":true}</script>
 <script type="application/json" id="data-legs">[]</script>
 <script type="application/json" id="data-days">[]</script>
 <script type="application/json" id="data-months">[]</script>
@@ -2173,6 +2173,217 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 
 </script>
 <script>
+/* ============================================================
+ * ROLLING THUNDER — rest.js
+ * FAR 117.25(b) 30-in-168 rest clock → premium-positioning lens.
+ *
+ * The rule (federal, referenced by PWA §23 N/O ladders as "FAR
+ * reserve rest requirements"): before beginning any reserve or
+ * flight duty period, the pilot must have had 30 consecutive
+ * hours free from all duty within the preceding 168 hours.
+ * Consequence: a 30h rest ending at time E supports FDP starts
+ * through E + 138h — a fresh rest covers a 6-day trip; a stale
+ * one caps the pickup at 2–3 days.
+ *
+ * Contract mechanics modeled (Aug 2025 PWA print):
+ *   §2.172  — on-call (LC/SC) days are never "non-fly days";
+ *             §2.121 "free of duty" excludes reserve obligation
+ *             → LC/SC days are never rest.
+ *   §23 S.7 — LC pilot MAY be released 0600 on last on-call day
+ *             before a SOFT non-fly day — only if he calls.
+ *   §23 S.8 — automatic 0600 release before a HARD non-fly day
+ *             (§2.129: golden X-day, vacation, legal duty…).
+ *   §23 S.9.f — short call released by 1200 before a hard day.
+ *   §23 S.5.f — Crew Scheduling can assign rest ("active rest")
+ *             starting immediately on direct phone contact.
+ *
+ * Doctrine: planning aid ONLY, day-granularity model. The
+ * company's crew-tracking system is authoritative for legality.
+ * ============================================================ */
+(function (global) {
+  'use strict';
+  const E = (typeof module !== 'undefined' && module.exports)
+    ? require('./engine.js')
+    : global.Engine;
+
+  const HOUR = 3600 * 1000;
+  const H30 = 30 * HOUR;
+  const H138 = 138 * HOUR; // 168 − 30
+  const MAX_SCAN_DAYS = 9;
+  const EARLIEST_REPORT_MIN = 5 * 60; // planning assumption: no report before 0500L
+  const PRE_DATA_REST = 400 * HOUR;   // assume long rest before the first known duty
+
+  // WORK = any day with an obligation to the company. Everything else
+  // (X, golden, payback, vacation, REST, sick, jury) is rest for the FAR
+  // clock. An assigned-rest overlay (REST) on an on-call day = rest.
+  const WORK_TYPES = { TRIP: 1, LC: 1, SC: 1, PR: 1, ADJ: 1 };
+  const HARD_TYPES = { GOLDEN: 1, VAC: 1, PJRY: 1, JURY: 1 }; // §2.129 subset present in our data
+
+  function isWorkRec(rec) {
+    if (!rec) return false;
+    if (rec.overlay === 'REST' && rec.type !== 'TRIP') return false;
+    return !!WORK_TYPES[rec.type];
+  }
+
+  function byDateMap(days) {
+    const m = {};
+    for (const d of days) m[d.date] = d;
+    return m;
+  }
+
+  /* Contiguous work-day runs → obligation intervals [from,to).
+   * opts.releases: {dateStr: minutesIntoDay} — early release on that block's
+   *   LAST day (§23 S.7 request, or a what-if branch).
+   * opts.releaseNowMs: epoch — assigned rest from this moment (§23 S.5.f);
+   *   the rest of the block containing it is released. */
+  function obligations(days, opts) {
+    opts = opts || {};
+    const releases = opts.releases || {};
+    const sorted = days.slice().sort((a, b) => (a.date < b.date ? -1 : 1));
+    const byDate = byDateMap(sorted);
+    const blocks = [];
+    let cur = null;
+    for (const d of sorted) {
+      if (!isWorkRec(d)) { cur = null; continue; }
+      if (cur && E.addDays(cur.lastDate, 1) === d.date) { cur.lastDate = d.date; cur.lastRec = d; }
+      else { cur = { firstDate: d.date, lastDate: d.date, lastRec: d }; blocks.push(cur); }
+    }
+    for (const b of blocks) {
+      b.from = E.epochAt(b.firstDate, 0);
+      let endMin = 24 * 60;
+      if (releases[b.lastDate] != null) endMin = Math.min(endMin, releases[b.lastDate]);
+      else {
+        const nextRec = byDate[E.addDays(b.lastDate, 1)];
+        if (nextRec && HARD_TYPES[nextRec.type]) {
+          if (b.lastRec.type === 'LC') endMin = 6 * 60;        // §23 S.8
+          else if (b.lastRec.type === 'SC') endMin = 12 * 60;  // §23 S.9.f
+        }
+      }
+      b.to = E.epochAt(b.lastDate, endMin);
+      if (opts.releaseNowMs != null && b.from <= opts.releaseNowMs && opts.releaseNowMs < b.to) {
+        b.to = opts.releaseNowMs;
+      }
+    }
+    return blocks;
+  }
+
+  // Complement of the obligation blocks = rest windows, padded on both ends.
+  function restWindows(blocks, endMs) {
+    const rests = [];
+    let cursor = (blocks.length ? blocks[0].from : endMs) - PRE_DATA_REST;
+    for (const b of blocks) {
+      if (b.from > cursor) rests.push({ from: cursor, to: b.from });
+      cursor = Math.max(cursor, b.to);
+    }
+    if (endMs > cursor) rests.push({ from: cursor, to: endMs });
+    return rests;
+  }
+
+  /* A pickup (rotation) starting on dateStr: how many FULL trip days does
+   * the 30-in-168 clock support? Once the trip starts there is no further
+   * 30h rest, so every FDP leans on rest banked before the report.
+   * Returns:
+   *   fullDays     — trip days covered even with a 2359 duty start
+   *   legalThrough — FDP starts legal up to this instant (E + 138h)
+   *   marginal     — {day, by}: one more day works if that day's duty
+   *                  starts before `by`
+   *   reportAfter  — report must wait until this instant for the ongoing
+   *                  rest to reach 30h (null if already banked)          */
+  function assessPickup(days, dateStr, opts) {
+    const dayStart = E.epochAt(dateStr, 0);
+    const dayEnd = E.epochAt(dateStr, 24 * 60);
+    const blocks = obligations(days, opts);
+    const rests = restWindows(blocks, dayStart + PRE_DATA_REST);
+
+    const earliestReport = E.epochAt(dateStr, EARLIEST_REPORT_MIN);
+    let R = earliestReport;
+    let reportAfter = null;
+    const ongoing = rests.find((r) => r.from < dayEnd && r.to > dayStart);
+    if (ongoing) {
+      const complete = ongoing.from + H30;
+      if (complete > earliestReport && complete <= dayEnd) { reportAfter = complete; R = complete; }
+    }
+
+    // clip rest at the report — then each qualifying (≥30h) window supports
+    // FDP starts through its end + 138h
+    let cutoff = -Infinity;
+    for (const r of rests) {
+      const to = Math.min(r.to, R);
+      if (to - r.from >= H30) cutoff = Math.max(cutoff, to + H138);
+    }
+
+    let fullDays = 0;
+    while (fullDays < MAX_SCAN_DAYS &&
+           E.epochAt(E.addDays(dateStr, fullDays), 24 * 60) <= cutoff) fullDays++;
+
+    let marginal = null;
+    if (isFinite(cutoff) && fullDays < MAX_SCAN_DAYS) {
+      const nextDayStart = E.epochAt(E.addDays(dateStr, fullDays), 0);
+      if (cutoff > nextDayStart) marginal = { day: fullDays + 1, by: cutoff };
+    }
+    return {
+      date: dateStr, fullDays, marginal, reportAfter,
+      legalThrough: isFinite(cutoff) ? cutoff : null
+    };
+  }
+
+  // Consecutive rest-type days starting at dateStr (the pure-premium runway).
+  function offRunLength(days, dateStr) {
+    const byDate = byDateMap(days);
+    let n = 0, d = dateStr;
+    while (byDate[d] && !isWorkRec(byDate[d])) { n++; d = E.addDays(d, 1); }
+    return n;
+  }
+
+  /* Every future on-call→off boundary: the positioning decision points.
+   * baseline = no phone call; withCall = §23 S.7 0600 release (or the §23 S.8
+   * automatic one); gsLaunch = pickup starting ON the last on-call day
+   * (<18h GS, §23 U.1.c). */
+  function boundaries(days, fromDate) {
+    const sorted = days.slice().sort((a, b) => (a.date < b.date ? -1 : 1));
+    const byDate = byDateMap(sorted);
+    const out = [];
+    for (const d of sorted) {
+      if (d.date < fromDate) continue;
+      if (!isWorkRec(d) || (d.type !== 'LC' && d.type !== 'SC')) continue;
+      const next = byDate[E.addDays(d.date, 1)];
+      if (!next || isWorkRec(next)) continue;
+      const offStart = next.date;
+      const offLen = offRunLength(sorted, offStart);
+      const autoRelease = !!HARD_TYPES[next.type];
+      const baseline = assessPickup(sorted, offStart);
+      const withCall = autoRelease ? baseline
+        : assessPickup(sorted, offStart, { releases: { [d.date]: 6 * 60 } });
+      out.push({
+        lcDate: d.date, lcType: d.type, offStart, offLen, autoRelease,
+        baseline, withCall,
+        gsLaunch: offLen >= 2 ? assessPickup(sorted, d.date) : null
+      });
+    }
+    return out;
+  }
+
+  // Where does the clock stand right now?
+  function statusNow(days, nowMs) {
+    const blocks = obligations(days);
+    const cur = blocks.find((b) => b.from <= nowMs && nowMs < b.to);
+    if (cur) return { onRest: false, block: cur };
+    const rests = restWindows(blocks, nowMs + HOUR);
+    const r = rests.find((w) => w.from <= nowMs && nowMs < w.to);
+    return { onRest: true, since: r ? r.from : null, complete30: r ? r.from + H30 : null };
+  }
+
+  const Rest = {
+    H30, H138, EARLIEST_REPORT_MIN,
+    isWorkRec, obligations, restWindows, assessPickup, offRunLength,
+    boundaries, statusNow
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = Rest;
+  global.Rest = Rest;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
 /* ROLLING THUNDER — app.js
  * Boot, data store (embedded JSON / fetch / localStorage overlay),
  * sanity banner, tabs, trip sizer, leg entry, JSON editors, offline export. */
@@ -2490,6 +2701,9 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     // his real schedule underneath: X days tan, LC/reserve days baby blue, trips navy
     const daysByDate = {};
     for (const d of store.days) daysByDate[d.date] = d;
+    // REST lens — 30-in-168 positioning (planning aid; day-granularity model)
+    const restCtx = buildRestCtx(now, todayStr, daysByDate);
+    if (restCtx && restCtx.nowLine) host.appendChild(restCtx.nowLine);
     const months = Array.from(new Set(events.map((e) => e.date.slice(0, 7)))).sort();
     for (const ym of months) {
       const wrap = el('section', 'cal-month');
@@ -2505,7 +2719,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
       const n = C.daysInMonth(ym);
       for (let d = 1; d <= n; d++) {
         const dateStr = ym + '-' + String(d).padStart(2, '0');
-        grid.appendChild(pcsDayCard(dateStr, byDate[dateStr], todayStr, nextDl, now, xm, daysByDate[dateStr]));
+        grid.appendChild(pcsDayCard(dateStr, byDate[dateStr], todayStr, nextDl, now, xm, daysByDate[dateStr], restCtx));
       }
       wrap.appendChild(grid);
       host.appendChild(wrap);
@@ -2518,13 +2732,59 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
       '<span><i style="background:#6FBCDE"></i>your LC/PB/REST</span>' +
       '<span><i style="background:#E5C33C"></i>NEXT deadline</span>' +
       '<span><i style="background:#3E9E6B"></i>earliest movable X-day</span>' +
+      '<span><i style="background:#D1352B"></i>Nd = pickup length the rest clock allows</span>' +
       '<span class="gap"></span><span>tap a marked day for details</span>';
     host.appendChild(legend);
   }
 
-  function pcsDayCard(dateStr, evs, todayStr, nextDl, now, xm, rec) {
+  /* ---------- REST lens (30-in-168) for the PCS calendar ---------- */
+  function buildRestCtx(now, todayStr, daysByDate) {
+    const R = window.Rest;
+    if (!R || !store.days.length) return null;
+    const cache = {};
+    const assess = (d) => cache[d] || (cache[d] = R.assessPickup(store.days, d));
+    const bounds = R.boundaries(store.days, todayStr);
+    const byLc = {}, byOffStart = {};
+    for (const b of bounds) { byLc[b.lcDate] = b; byOffStart[b.offStart] = b; }
+
+    // the NOW line: where the clock stands and the one call worth making
+    let nowLine = null;
+    const mk = (txt, color) => { const n = el('div', 'now-line'); n.textContent = txt; n.style.color = color; return n; };
+    const st = R.statusNow(store.days, now);
+    if (!st.onRest) {
+      const b = bounds.find((x) => x.offStart > todayStr);
+      if (b && b.autoRelease) {
+        nowLine = mk('REST · ' + (b.offStart === E.addDays(todayStr, 1) ? 'golden/hard day next' : 'golden-led block ' + b.offStart) +
+          ' — auto-release 0600 on ' + b.lcDate + ' (23 S.8) → ' + b.withCall.fullDays + '-day pickups legal', '#3E9E6B');
+      } else if (b && b.withCall.fullDays > b.baseline.fullDays) {
+        const cn = R.assessPickup(store.days, b.offStart, { releaseNowMs: now });
+        nowLine = mk('⚠ REST · off block starts ' + b.offStart + ' — no call: ' + b.baseline.fullDays +
+          'd max · call Crew Sked for rest (23 S.5.f/S.7): ' + Math.max(cn.fullDays, b.withCall.fullDays) + 'd', '#E5C33C');
+      }
+    } else if (st.complete30 != null && st.complete30 > now) {
+      nowLine = mk('REST · on rest since ' + E.fmtDate(st.since) + ' ' + E.fmtClock(st.since) +
+        ' — 30h complete ' + E.fmtDate(st.complete30) + ' ' + E.fmtClock(st.complete30), '#E5C33C');
+    } else if (daysByDate[todayStr] && !R.isWorkRec(daysByDate[todayStr])) {
+      const a = assess(todayStr);
+      if (a.fullDays > 0) nowLine = mk('REST · clock clean — a pickup starting today is good for ' +
+        a.fullDays + ' full day' + (a.fullDays === 1 ? '' : 's'), '#3E9E6B');
+    }
+    return { assess, byLc, byOffStart, offRun: (d) => R.offRunLength(store.days, d), nowLine };
+  }
+
+  function pcsDayCard(dateStr, evs, todayStr, nextDl, now, xm, rec, restCtx) {
     const C = window.Calendar;
     const isXm = xm && xm.date === dateStr;
+    // REST lens facts for this tile (future days only — the past can't be positioned)
+    const RR = window.Rest;
+    const isFutureOff = restCtx && rec && dateStr >= todayStr && !RR.isWorkRec(rec);
+    const bnd = restCtx && dateStr >= todayStr ? restCtx.byLc[dateStr] : null;
+    const restA = isFutureOff ? restCtx.assess(dateStr) : null;
+    const offRem = isFutureOff ? restCtx.offRun(dateStr) : 0;
+    const shownDays = restA ? Math.min(restA.fullDays, offRem) : 0;
+    const restColor = restA ? (shownDays === 0 ? '#D1352B'
+      : (restA.fullDays >= offRem || restA.fullDays >= 6 ? '#3E9E6B' : '#E5C33C')) : null;
+    const constrained = bnd && !bnd.autoRelease && bnd.withCall.fullDays > bnd.baseline.fullDays;
     const card = el('div', 'day-card pcs-day' + (evs || isXm ? '' : ' pcs-quiet'));
     if (todayStr === dateStr) card.classList.add('today');
     // background: deadline events PURPLE (used nowhere else — never reads as a
@@ -2550,12 +2810,28 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
       if (rec.type === 'TRIP' && rec.rotation) typeTxt = rec.rotation;
       top.appendChild(el('span', 'day-badge' + (evs ? ' overlay' : ''), typeTxt));
     }
+    // REST lens chips ride the top row when the tile has other business
+    if (bnd && constrained) {
+      const w = el('span', 'day-badge', '⚠REST');
+      w.style.background = '#D1352B'; w.style.color = '#fff';
+      top.appendChild(w);
+    }
+    if (bnd && bnd.gsLaunch) {
+      const g = el('span', 'day-badge', 'GS<18h');
+      g.style.background = '#3E9E6B'; g.style.color = '#fff';
+      top.appendChild(g);
+    }
     if (evs) {
       const allPast = evs.every((e) => e.past);
       const isNext = nextDl && evs.some((e) => e === nextDl);
       if (allPast) card.classList.add('pcs-done');
       if (isNext) card.classList.add('pcs-next-day');
       for (const ev of evs) top.appendChild(el('span', 'day-badge' + (ev.kind === 'deadline' ? '' : ' overlay'), ev.code));
+      if (restA) {
+        const chip = el('span', 'day-badge', shownDays + 'd');
+        chip.style.background = restColor; chip.style.color = '#fff';
+        top.appendChild(chip);
+      }
       body.appendChild(top);
       for (const ev of evs) {
         body.appendChild(el('div', 'day-label', E.fmtClock(ev.t) + 'E · ' + ev.short.toUpperCase()));
@@ -2569,6 +2845,18 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
         body.appendChild(el('div', 'day-label', 'EARLIEST MOVABLE X-DAY'));
         const fig = el('div', 'seg-fig pcs-count', '≥72h');
         fig.style.color = '#3E9E6B';
+        body.appendChild(fig);
+      }
+      // quiet tiles get the rest verdict as their main figure
+      if (restA && !isXm) {
+        body.appendChild(el('div', 'day-label', 'PICKUP LEGAL'));
+        const fig = el('div', 'seg-fig pcs-count', shownDays + 'd');
+        fig.style.color = restColor;
+        body.appendChild(fig);
+      } else if (bnd && !isXm) {
+        body.appendChild(el('div', 'day-label', 'REST GATE'));
+        const fig = el('div', 'seg-fig pcs-count', bnd.autoRelease ? 'auto ✓' : (constrained ? '⚠ CALL' : 'ok'));
+        fig.style.color = bnd.autoRelease ? '#3E9E6B' : (constrained ? '#D1352B' : '#3E9E6B');
         body.appendChild(fig);
       }
     }
@@ -2613,6 +2901,58 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
         if (r.lastSix) amp.appendChild(el('div', 'amp-line amp-dim',
           'last six days of bid period — no moves in/out during PBS award window'));
       }
+      // REST lens — the 30-in-168 story for this day
+      if (restA) {
+        amp.appendChild(el('div', 'amp-line amp-strong', 'Rest clock (30-in-168):'));
+        const line = el('div', 'amp-line', 'a pickup starting here is good for ' +
+          restA.fullDays + ' full day' + (restA.fullDays === 1 ? '' : 's') +
+          ' · ' + offRem + ' off day' + (offRem === 1 ? '' : 's') + ' left in this block');
+        line.style.color = restColor;
+        amp.appendChild(line);
+        if (restA.marginal) amp.appendChild(el('div', 'amp-line', 'day-' + restA.marginal.day +
+          ' works too if its duty starts before ' + E.fmtClock(restA.marginal.by) + ' on ' + E.fmtDate(restA.marginal.by)));
+        if (restA.reportAfter) amp.appendChild(el('div', 'amp-line',
+          'report no earlier than ' + E.fmtClock(restA.reportAfter) + ' — that’s when the 30h rest completes'));
+        const ob = restCtx.byOffStart[dateStr];
+        if (ob && !ob.autoRelease && ob.withCall.fullDays > ob.baseline.fullDays) {
+          const fix = el('div', 'amp-line', 'capped by the on-call day before — 0600 release on ' +
+            ob.lcDate + ' (call Crew Sked, 23 S.7) lifts this to ' + ob.withCall.fullDays + 'd');
+          fix.style.color = '#E5C33C';
+          amp.appendChild(fix);
+        }
+        if (ob && ob.autoRelease) amp.appendChild(el('div', 'amp-line amp-dim',
+          'golden/hard day leads this block — automatic 0600 release the day before (23 S.8)'));
+      }
+      if (bnd) {
+        amp.appendChild(el('div', 'amp-line amp-strong', 'Last on-call day before off block ' +
+          bnd.offStart + ' (' + bnd.offLen + ' days):'));
+        if (bnd.autoRelease) {
+          const line = el('div', 'amp-line', 'hard day next — automatic release 0600 (23 S.8); ' +
+            bnd.withCall.fullDays + '-day pickups legal from ' + bnd.offStart);
+          line.style.color = '#3E9E6B';
+          amp.appendChild(line);
+        } else {
+          const bad = el('div', 'amp-line', 'no call → rest only starts when this day ends → pickups from ' +
+            bnd.offStart + ' capped at ' + bnd.baseline.fullDays + 'd');
+          bad.style.color = constrained ? '#D1352B' : '#EDF1F8';
+          amp.appendChild(bad);
+          if (constrained) {
+            const good = el('div', 'amp-line', 'CALL Crew Sked: 0600 release (23 S.7) or assigned rest ' +
+              '(23 S.5.f) → up to ' + bnd.withCall.fullDays + 'd legal · earlier rest = earlier legality');
+            good.style.color = '#3E9E6B';
+            amp.appendChild(good);
+          }
+        }
+        if (bnd.gsLaunch) {
+          amp.appendChild(el('div', 'amp-line amp-strong', 'GS launch day:'));
+          amp.appendChild(el('div', 'amp-line', 'standing GS + report <18h notice today = 1st duty period ' +
+            'premium (23 U.1.c) · days landing on X = premium · rest clock allows ' + bnd.gsLaunch.fullDays + 'd from here'));
+          if (!bnd.autoRelease) amp.appendChild(el('div', 'amp-line amp-dim',
+            'trade-off: taking the 0600 release ends today’s GS window — pick the play'));
+        }
+      }
+      if (restA || bnd) amp.appendChild(el('div', 'amp-line amp-dim',
+        'planning aid — day-level model; crew tracking is authoritative'));
       return amp;
     });
     return card;
