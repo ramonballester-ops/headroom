@@ -333,7 +333,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<script type="application/json" id="build-info">{"built":"2026-08-30T23:36:07.154Z","shell":true}</script>
+<script type="application/json" id="build-info">{"built":"2026-08-31T14:55:24.441Z","shell":true}</script>
 <script type="application/json" id="data-legs">[]</script>
 <script type="application/json" id="data-days">[]</script>
 <script type="application/json" id="data-months">[]</script>
@@ -2505,10 +2505,14 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     return y + '-' + String(m + 1).padStart(2, '0');
   }
   function initSelectedMonths() {
-    const today = E.fmtDate(Date.now());
-    const ym = today.slice(0, 7);
-    for (const m of [ymAdd(ym, -2), ymAdd(ym, -1), ym]) selectedMonths.add(m);
-    if (+today.slice(8) >= 10) selectedMonths.add(ymAdd(ym, 1));
+    // Startup view = CURRENT month only, plus NEXT month once its data exists
+    // (Ramon 2026-08-30: never make him deselect history; the chips still
+    // reach every older month on demand). Runs AFTER loadData so the
+    // next-month check can see whether that schedule has been pasted yet.
+    const ym = E.fmtDate(Date.now()).slice(0, 7);
+    selectedMonths.add(ym);
+    const next = ymAdd(ym, 1);
+    if (monthsAvailable().includes(next)) selectedMonths.add(next);
   }
 
   function monthsAvailable() {
@@ -3529,7 +3533,6 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
   }
 
   async function boot() {
-    initSelectedMonths();
     try {
       await loadData();
     } catch (e) {
@@ -3538,6 +3541,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
         ' — if opened via file://, use the built dist/headroom.html (embedded data) or serve over HTTP.';
       return;
     }
+    initSelectedMonths();
     runGates();
     renderAll();
     for (const b of document.querySelectorAll('.tab-btn')) b.onclick = () => showTab(b.dataset.tab);
