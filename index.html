@@ -333,7 +333,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<script type="application/json" id="build-info">{"built":"2026-08-31T14:55:24.441Z","shell":true}</script>
+<script type="application/json" id="build-info">{"built":"2026-09-01T02:17:16.801Z","shell":true}</script>
 <script type="application/json" id="data-legs">[]</script>
 <script type="application/json" id="data-days">[]</script>
 <script type="application/json" id="data-months">[]</script>
@@ -2795,9 +2795,14 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     const bnd = restCtx && dateStr >= todayStr ? restCtx.byLc[dateStr] : null;
     const restA = isFutureOff ? restCtx.assess(dateStr) : null;
     const offRem = isFutureOff ? restCtx.offRun(dateStr) : 0;
-    const shownDays = restA ? Math.min(restA.fullDays, offRem) : 0;
+    // PICKUP LEGAL = the rest clock's answer ONLY (6-day ceiling when rested).
+    // offRem (off days left in the block) is the PREMIUM-VALUE window, not a
+    // legality bound — pickups legally fly over LC days, those days just pay
+    // nothing extra (owner-confirmed 2026-08-31; real schedules show pickups
+    // spanning LC days routinely).
+    const shownDays = restA ? restA.fullDays : 0;
     const restColor = restA ? (shownDays === 0 ? '#D1352B'
-      : (restA.fullDays >= offRem || restA.fullDays >= 6 ? '#3E9E6B' : '#E5C33C')) : null;
+      : (shownDays >= 6 ? '#3E9E6B' : '#E5C33C')) : null;
     const constrained = bnd && !bnd.autoRelease && bnd.withCall.fullDays > bnd.baseline.fullDays;
     const card = el('div', 'day-card pcs-day' + (evs || isXm ? '' : ' pcs-quiet'));
     if (todayStr === dateStr) card.classList.add('today');
@@ -2867,6 +2872,11 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
         const fig = el('div', 'seg-fig pcs-count', shownDays + 'd');
         fig.style.color = restColor;
         body.appendChild(fig);
+        if (offRem > 0 && offRem < shownDays) {
+          const pv = el('div', 'day-label', offRem + 'd PREMIUM · THEN LC');
+          pv.style.color = '#E5C33C';
+          body.appendChild(pv);
+        }
       } else if (bnd && !isXm) {
         body.appendChild(el('div', 'day-label', 'REST GATE'));
         const fig = el('div', 'seg-fig pcs-count', bnd.autoRelease ? 'auto ✓' : (constrained ? '⚠ CALL' : 'ok'));
@@ -2918,11 +2928,13 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
       // REST lens — the 30-in-168 story for this day
       if (restA) {
         amp.appendChild(el('div', 'amp-line amp-strong', 'Rest clock (30-in-168):'));
-        const line = el('div', 'amp-line', 'a pickup starting here is good for ' +
+        const line = el('div', 'amp-line', 'a pickup starting here is LEGAL for ' +
           restA.fullDays + ' full day' + (restA.fullDays === 1 ? '' : 's') +
           ' · ' + offRem + ' off day' + (offRem === 1 ? '' : 's') + ' left in this block');
         line.style.color = restColor;
         amp.appendChild(line);
+        if (offRem > 0 && offRem < restA.fullDays) amp.appendChild(el('div', 'amp-line amp-dim',
+          'days beyond the block land on LC — legal to fly, but they are work days: no premium value'));
         if (restA.fresh) amp.appendChild(el('div', 'amp-line amp-dim',
           'fully rested — the 138h window runs from your actual report, so 6 days always fit; ' +
           'a 7-day fits only off a late report with early day-7 duty'));
