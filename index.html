@@ -121,6 +121,14 @@ body {
 .day-badge.overlay { background: rgba(0, 0, 0, 0.15); color: inherit; }
 .day-badge.bp-tag { background: var(--yellow); color: #10141C; }
 .day-label { font-size: 8.5px; letter-spacing: 0.12em; opacity: 0.75; margin: 3px 0 1px; }
+/* landing day: the trip bar tips into the cell the rotation lands in (MyCrew style) */
+.land-tip {
+  display: block; width: calc(100% + 6px); box-sizing: border-box; overflow: hidden;
+  background: var(--navy); color: #EDF1F8; white-space: nowrap;
+  font-size: 9px; font-weight: 700; letter-spacing: 0.02em; line-height: 1.3;
+  padding: 2px 12px 2px 7px; margin: 3px 0 0 -6px;
+  clip-path: polygon(0 0, calc(100% - 9px) 0, 100% 50%, calc(100% - 9px) 100%, 0 100%);
+}
 .day-stack { display: flex; flex-direction: column; }
 .seg-fig {
   font-size: 14px; font-weight: 700; letter-spacing: 0.02em;
@@ -333,7 +341,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<script type="application/json" id="build-info">{"built":"2026-09-14T22:46:43.859Z","shell":true}</script>
+<script type="application/json" id="build-info">{"built":"2026-09-14T23:45:37.889Z","shell":true}</script>
 <script type="application/json" id="data-legs">[]</script>
 <script type="application/json" id="data-days">[]</script>
 <script type="application/json" id="data-months">[]</script>
@@ -760,6 +768,30 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     return { legs: kept, removed };
   }
 
+  /* ---------- landing days (calendar) ----------
+   * A rotation whose FINAL leg blocks out on one display-zone date and blocks
+   * in on the next lands "the following day": the calendar paints that date
+   * in its own code's color and tips the trip bar into it (MyCrew style).
+   * Layover days inside a trip (a redeye that is not the last leg) do not
+   * qualify — the trip is still going. Returns { 'YYYY-MM-DD': { rotation,
+   * blockIn(epoch), flight } }. Deadheads count: the landing is physical. */
+  function landingDays(legs) {
+    const finals = {};
+    for (const l of legs || []) {
+      if (!l.rotation || !l.block_in) continue;
+      const b = blockInMs(l);
+      if (!finals[l.rotation] || b > finals[l.rotation].b) finals[l.rotation] = { b, leg: l };
+    }
+    const out = {};
+    for (const rot of Object.keys(finals)) {
+      const { b, leg } = finals[rot];
+      const outMs = b - (leg.block_minutes || 0) * MIN_MS;
+      const dIn = fmtDate(b), dOut = fmtDate(outMs);
+      if (dIn > dOut) out[dIn] = { rotation: rot, blockIn: b, flight: leg.flight || '' };
+    }
+    return out;
+  }
+
   /* ---------- rail color bands (render spec) ---------- */
   function band(headroomMinutes) {
     if (headroomMinutes < 600) return '#D1352B';    // < 10:00
@@ -774,7 +806,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     fmtHM, fmtClock, fmtDate, isoInTZ, parseHM,
     countable, rollingAt, headroomAt,
     daySegments, peakWalk, scorecard, guaranteeFromALV,
-    sanityGates, band, removeRotationLegs, legOverlaps
+    sanityGates, band, removeRotationLegs, legOverlaps, landingDays
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = Engine;
@@ -1520,7 +1552,8 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
   // Delta MyCrew cross-reference colors (render spec §4)
   const TYPE_BG = {
     TRIP: '#1B3E77',                                   // navy — rotation actually flown
-    LC: '#6FBCDE', PB: '#6FBCDE', PR: '#6FBCDE', REST: '#6FBCDE', ADJ: '#6FBCDE',   // light blue
+    LC: '#6FBCDE', PR: '#6FBCDE', REST: '#6FBCDE', ADJ: '#6FBCDE',   // light blue
+    PB: '#B7A97D',                                     // payback day AWARDED over an LC day — a lighter tan: reads as an off day (X-day family), shade says "awarded" (Ramon, 2026-09-14)
     PJRY: '#6FBCDE', JURY: '#6FBCDE',                  // paid jury duty — baby blue in MyCrew (verified 2026-08-20), not tan
     XX: '#8B7C4E', GOLDEN: '#8B7C4E', VAC: '#8B7C4E', // tan
     SC: '#E8792F',                                     // orange — SHORT CALL reserve (MyCrew orange). NOT sick — sick days count as credit and stay light blue.
@@ -1610,14 +1643,24 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
   }
 
   function dayCard(dateStr, ym, ctx) {
-    const rec = ctx.daysByDate[dateStr];
+    const rec0 = ctx.daysByDate[dateStr];
     const seg = E.daySegments(ctx.legs, dateStr);
+    // landing day: the rotation's last leg blocked in this morning after
+    // departing yesterday — paint the day in its OWN code's color (the
+    // overlay the parser kept, e.g. XX/PB) and tip the trip bar into it
+    if (!ctx._landings) ctx._landings = E.landingDays(ctx.legs);
+    const land = ctx._landings[dateStr];
+    let rec = rec0;
+    if (land && rec0 && rec0.type === 'TRIP' && (!rec0.rotation || rec0.rotation === land.rotation)) {
+      rec = rec0.overlay ? Object.assign({}, rec0, { type: rec0.overlay, overlay: undefined, rotation: undefined }) : null;
+    }
 
     const card = el('div', 'day-card');
     const bg = rec ? TYPE_BG[rec.type] : null;
     if (bg) card.style.background = bg;
     if (rec && !DARK_TEXT_TYPES[rec.type]) card.classList.add('on-navy');
     if (!rec) card.classList.add('untyped');
+    if (land) card.classList.add('landing');
     if (ctx.todayStr === dateStr) card.classList.add('today');
 
     // ---- left rail: the 24-hour clock, split at each event minute ----
@@ -1648,6 +1691,11 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
       top.appendChild(el('span', 'day-badge bp-tag', rec.bid_period.slice(5) + ' BP'));
     }
     body.appendChild(top);
+    if (land) {
+      const tip = el('div', 'land-tip', land.rotation);
+      tip.title = land.rotation + ' lands ' + E.fmtClock(land.blockIn) + (land.flight ? ' (' + land.flight + ')' : '');
+      body.appendChild(tip);
+    }
 
     const od = offDef(rec);
     body.appendChild(el('div', 'day-label', (od ? od + ' · ' : '') + 'HEADROOM'));
@@ -1696,6 +1744,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
           ? ' ▼ ' + e.leg.flight + ' blocks in (+' + E.fmtHM(e.leg.block_minutes) + ')'
           : ' ▲ ' + e.leg.flight + ' ages off (−' + E.fmtHM(e.leg.block_minutes) + ')')));
       }
+      if (land) amp.appendChild(el('div', 'amp-line', E.fmtClock(land.blockIn) + ' ▼ ' + land.rotation + ' lands — trip ends here; the day is yours from block-in'));
       if (rec && rec.note) amp.appendChild(el('div', 'amp-line amp-note', rec.note));
       const od2 = offDef(rec);
       if (od2) amp.appendChild(el('div', 'amp-line amp-dim',
