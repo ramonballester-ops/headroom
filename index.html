@@ -191,6 +191,10 @@ body {
 .sc-excl { color: #6B7383; font-style: italic; }
 tr.provisional .sc-num { font-style: italic; color: var(--yellow); }
 tr.provisional .sc-num.sc-best { color: var(--yellow); }
+/* year-over-year deltas: green = better than last year, red = worse; provisional rows stay italic but keep the verdict color */
+.sc-delta.sc-up, tr.provisional .sc-delta.sc-up { color: var(--green); }
+.sc-delta.sc-down, tr.provisional .sc-delta.sc-down { color: #F0776B; }
+.sc-delta { font-variant-numeric: tabular-nums; }
 .prov-num { font-style: italic; color: var(--yellow); }
 tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--lblue); }
 .sc-close { font-size: 10px; padding: 2px 8px; margin-left: 8px; }
@@ -341,7 +345,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<script type="application/json" id="build-info">{"built":"2026-09-14T23:45:37.889Z","shell":true}</script>
+<script type="application/json" id="build-info">{"built":"2026-09-15T01:04:49.506Z","shell":true}</script>
 <script type="application/json" id="data-legs">[]</script>
 <script type="application/json" id="data-days">[]</script>
 <script type="application/json" id="data-months">[]</script>
@@ -1779,6 +1783,34 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     return f2(s.pay) + ' · ' + f2(s.offense) + ' · ' + f2(s.defense);
   }
 
+  const MN = { '01': 'Jan', '02': 'Feb', '03': 'Mar', '04': 'Apr', '05': 'May', '06': 'Jun', '07': 'Jul', '08': 'Aug', '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dec' };
+
+  /* Year-over-year deltas: for every calendar month held (not excluded) in
+   * BOTH seasons, this year's metric minus last year's, per metric (null when
+   * either side lacks the metric). Pure — takes [{m, s}] as render() builds. */
+  function yoyDeltas(scored, cur, prev) {
+    const by = {};
+    for (const x of scored) {
+      if (x.m.excluded) continue;
+      (by[x.m.bid_period.slice(5)] = by[x.m.bid_period.slice(5)] || {})[x.m.bid_period.slice(0, 4)] = x;
+    }
+    const out = [];
+    for (const mm of Object.keys(by).sort()) {
+      const a = by[mm][cur], b = by[mm][prev];
+      if (!a || !b) continue;
+      const d = (k) => (a.s[k] == null || b.s[k] == null) ? null : a.s[k] - b.s[k];
+      out.push({ month: mm, label: MN[mm], pay: d('pay'), offense: d('offense'), defense: d('defense'),
+        provisional: a.m.status === 'provisional' || b.m.status === 'provisional' });
+    }
+    return out;
+  }
+  const fDelta = (d) => (d == null ? '—' : (d > 0 ? '+' : d < 0 ? '−' : '±') + Math.abs(d).toFixed(2));
+  function deltaCell(d) {
+    const td = el('td', 'sc-num sc-delta', fDelta(d));
+    if (d != null && Math.abs(d) >= 0.005) td.classList.add(d > 0 ? 'sc-up' : 'sc-down');
+    return td;
+  }
+
   function render(container, months, opts) {
     opts = opts || {};
     container.textContent = '';
@@ -1863,40 +1895,33 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
       container.appendChild(sec);
     }
 
-    // ---- year-over-year by month ----
+    // ---- year-over-year: the DELTA, not the numbers again ----
+    // Only months held in both the latest season and the one before it; each
+    // cell is this year minus last year, per metric. Green = better this year,
+    // red = worse. Provisional months keep the ◌ mark; excluded months are out.
     const yoy = el('section', 'sc-season');
-    yoy.appendChild(el('h3', null, 'Year over year'));
-    const byMonth = {};
-    for (const x of scored) {
-      const mm = x.m.bid_period.slice(5);
-      (byMonth[mm] = byMonth[mm] || {})[x.m.bid_period.slice(0, 4)] = x;
-    }
     const yrs = Object.keys(years).sort();
-    const t2 = el('table', 'sc-table');
-    const th2 = el('tr');
-    th2.appendChild(el('th', null, 'MONTH'));
-    for (const y of yrs) th2.appendChild(el('th', null, y + '  PAY · O · D'));
-    const thead2 = el('thead'); thead2.appendChild(th2); t2.appendChild(thead2);
-    const tb2 = el('tbody');
-    const MN = { '01': 'Jan', '02': 'Feb', '03': 'Mar', '04': 'Apr', '05': 'May', '06': 'Jun', '07': 'Jul', '08': 'Aug', '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dec' };
-    for (const mm of Object.keys(byMonth).sort()) {
-      const tr = el('tr');
-      tr.appendChild(el('td', 'sc-month', MN[mm]));
-      for (const y of yrs) {
-        const x = byMonth[mm][y];
-        const td = el('td', 'sc-num');
-        if (!x) td.textContent = '—';
-        else if (x.m.excluded) { td.textContent = 'excl'; td.className = 'sc-excl'; }
-        else {
-          td.textContent = slashLine(x.s);
-          if (x.m.status === 'provisional') { td.classList.add('prov-num'); td.textContent += ' ◌'; }
-        }
-        tr.appendChild(td);
+    const cur = yrs[yrs.length - 1], prev = yrs[yrs.length - 2];
+    yoy.appendChild(el('h3', null, prev ? 'Year over year — ' + cur + ' vs ' + prev : 'Year over year'));
+    const rows = prev ? yoyDeltas(scored, cur, prev) : [];
+    if (!rows.length) {
+      yoy.appendChild(el('div', 'sc-note', 'no month is held in both seasons yet'));
+    } else {
+      const t2 = el('table', 'sc-table');
+      const th2 = el('tr');
+      for (const h of ['MONTH', 'Δ PAY', 'Δ O', 'Δ D', '']) th2.appendChild(el('th', null, h));
+      const thead2 = el('thead'); thead2.appendChild(th2); t2.appendChild(thead2);
+      const tb2 = el('tbody');
+      for (const r of rows) {
+        const tr = el('tr', r.provisional ? 'provisional' : null);
+        tr.appendChild(el('td', 'sc-month', r.label));
+        for (const k of ['pay', 'offense', 'defense']) tr.appendChild(deltaCell(r[k]));
+        tr.appendChild(el('td', 'sc-note', r.provisional ? '◌ ' + cur + ' provisional' : ''));
+        tb2.appendChild(tr);
       }
-      tb2.appendChild(tr);
+      t2.appendChild(tb2);
+      yoy.appendChild(t2);
     }
-    t2.appendChild(tb2);
-    yoy.appendChild(t2);
     container.appendChild(yoy);
   }
 
@@ -2076,7 +2101,9 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     return td;
   }
 
-  global.Scorecard = { render };
+  const Scorecard = { render, yoyDeltas, fDelta };
+  if (typeof module !== 'undefined' && module.exports) module.exports = Scorecard;
+  global.Scorecard = Scorecard;
 })(typeof window !== 'undefined' ? window : globalThis);
 
 </script>
