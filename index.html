@@ -345,7 +345,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<script type="application/json" id="build-info">{"built":"2026-09-15T01:04:49.506Z","shell":true}</script>
+<script type="application/json" id="build-info">{"built":"2026-09-15T20:20:27.982Z","shell":true}</script>
 <script type="application/json" id="data-legs">[]</script>
 <script type="application/json" id="data-days">[]</script>
 <script type="application/json" id="data-months">[]</script>
@@ -683,11 +683,29 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
       out.offense = m.premium_minutes / m.baseline_minutes; out.computed.offense = true;
     } else if (r.offense != null) out.offense = r.offense;
 
+    // DEFENSE rule (Ramon, 2026-09-15): a hit happens only when he actually
+    // flies a trip or sits a simulator on a reserve work day — that is the
+    // credit in the Time Card's RES CREDIT column. Unused LC/SC days earn no
+    // credit and therefore cost nothing here; sick credit is carved out.
     if (m.res_credit_minutes != null && m.baseline_minutes) {
       out.defense = Math.min(1, 1 - ((m.res_credit_minutes - (m.sick_minutes || 0)) / m.baseline_minutes));
       out.computed.defense = true;
     } else if (r.defense != null) out.defense = r.defense;
     return out;
+  }
+
+  /* Is a Pilot Schedule footer's ACT CRED usable as this month's reserve
+   * credit (DEFENSE input)? While the period is open it is EARNED credit
+   * (Aug 26 mid-month: 10:17 = the A051 work-day leg). Once the period ends
+   * iCrew fills it to the guarantee (Jul 26: 77:39 = guarantee, while the
+   * FINAL statement gave D = 1.00), and the ten pulled 320A reserve schedules
+   * all print exactly their guarantee. A filled footer must never erode D —
+   * the Time Card / Pay Statement own DEFENSE after month end. */
+  function scheduleCreditUsable(actCredMinutes, guaranteeMinutes, periodEnd, todayStr) {
+    if (actCredMinutes == null) return { usable: false, reason: 'no ACT CRED' };
+    if (periodEnd && todayStr && todayStr > periodEnd) return { usable: false, reason: 'period over — footer is the guarantee fill; paste the Time Card' };
+    if (guaranteeMinutes && actCredMinutes >= guaranteeMinutes) return { usable: false, reason: 'ACT CRED at/above guarantee — fill, not earned credit' };
+    return { usable: true, reason: 'period open — earned credit' };
   }
 
   function guaranteeFromALV(alvMinutes) {
@@ -810,7 +828,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     fmtHM, fmtClock, fmtDate, isoInTZ, parseHM,
     countable, rollingAt, headroomAt,
     daySegments, peakWalk, scorecard, guaranteeFromALV,
-    sanityGates, band, removeRotationLegs, legOverlaps, landingDays
+    sanityGates, band, removeRotationLegs, legOverlaps, landingDays, scheduleCreditUsable
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = Engine;
@@ -3423,9 +3441,11 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     pendingParse = null;
   }
 
+  let scheduleCreditNote = '';
   function pasteApply() {
     if (!pendingParse) return;
     const r = pendingParse;
+    scheduleCreditNote = '';
     if (r.kind === 'monthly-time-data') { applyMTD(r); return; }
     if (r.kind === 'pay-statement') { applyPayStmt(r); return; }
     if (r.kind === 'rotation') { applyRotation(r); return; }
@@ -3438,7 +3458,11 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
         store.months.push(m);
         store.months.sort((a, b) => a.bid_period.localeCompare(b.bid_period));
       }
-      if (m.status !== 'closed') m.res_credit_minutes = r.meta.act_cred_minutes;
+      const bpRec = (store.bidPeriods || []).find((p) => p.bid_period === r.bid_period) || {};
+      const guar = m.guarantee_minutes || bpRec.guarantee_minutes || m.baseline_minutes || null;
+      const ok = E.scheduleCreditUsable(r.meta.act_cred_minutes, guar, r.end, E.fmtDate(Date.now()));
+      if (m.status !== 'closed' && ok.usable) m.res_credit_minutes = r.meta.act_cred_minutes;
+      else if (m.status !== 'closed') scheduleCreditNote = 'reserve credit NOT taken from this schedule (' + ok.reason + ')';
     }
     persist();
     const fails = runGates();
@@ -3448,8 +3472,9 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     renderCalendar();
     const msg = $('paste-msg');
     msg.className = 'form-msg ' + (fails.length ? 'err' : 'ok');
-    msg.textContent = fails.length ? 'Applied, but sanity gates failed — see banner'
-      : 'Applied ✓ — check the calendar tab. ' + (embeddedMode ? 'Use Export to save a new file.' : 'Copy JSON from the Data tab into data/days.json to make it permanent.');
+    msg.textContent = (fails.length ? 'Applied, but sanity gates failed — see banner'
+      : 'Applied ✓ — check the calendar tab. ' + (embeddedMode ? 'Use Export to save a new file.' : 'Copy JSON from the Data tab into data/days.json to make it permanent.'))
+      + (scheduleCreditNote ? ' · ' + scheduleCreditNote : '');
     $('paste-preview').textContent = '';
     pendingParse = null;
   }
