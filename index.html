@@ -51,7 +51,9 @@ body {
 }
 #sanity-banner.active { display: block; }
 
-.tab-bar { display: flex; gap: 4px; padding: 0 16px; border-bottom: 1px solid #2A3040; }
+/* Tabs wrap rather than overflow: an overflowing tab row was the one thing
+ * wider than the phone, and iOS shrank the whole page to fit it (Ramon, 2026-09-20). */
+.tab-bar { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 16px; border-bottom: 1px solid #2A3040; }
 .tab-btn {
   background: none; border: none; color: var(--ink-dim);
   font: inherit; padding: 8px 12px; cursor: pointer;
@@ -76,6 +78,9 @@ body {
   font: inherit; font-size: 11px; padding: 3px 10px; border-radius: 12px; cursor: pointer;
 }
 .chip.on { color: var(--ink); border-color: var(--lblue); background: #1E2A3E; }
+
+/* PAY·O·D month picker (same chips as the calendar) */
+.sc-month-chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 10px; }
 
 .cal-month { margin: 14px 0 26px; }
 .cal-month-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
@@ -296,6 +301,9 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 /* Phone portrait: always show the full 7-day week — cards compress instead of scrolling */
 @media (max-width: 760px) {
   body { font-size: 12px; }
+  /* two clean rows of four — nothing spills off the right edge */
+  .tab-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; padding: 0 6px; }
+  .tab-btn { padding: 10px 2px; text-align: center; font-size: 11px; letter-spacing: 0.02em; white-space: nowrap; }
   .tab-panel { padding: 10px 8px 40px; }
   .cal-grid { min-width: 0; gap: 2px; grid-template-columns: repeat(7, minmax(0, 1fr)); }
   .day-card { min-height: 88px; border-radius: 3px; }
@@ -345,7 +353,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<script type="application/json" id="build-info">{"built":"2026-09-20T19:42:14.324Z","shell":true}</script>
+<script type="application/json" id="build-info">{"built":"2026-09-20T22:16:08.776Z","shell":true}</script>
 <script type="application/json" id="data-legs">[]</script>
 <script type="application/json" id="data-days">[]</script>
 <script type="application/json" id="data-months">[]</script>
@@ -365,11 +373,11 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
   <button class="tab-btn" data-tab="calendar">CALENDAR</button>
   <button class="tab-btn" data-tab="paste">PASTE</button>
   <button class="tab-btn" data-tab="scorecard">PAY·O·D</button>
-  <button class="tab-btn" data-tab="sizer">TRIP SIZER</button>
   <button class="tab-btn" data-tab="pcs">PCS</button>
   <button class="tab-btn" data-tab="commuter">COMMUTER</button>
   <button class="tab-btn" data-tab="a320">320A</button>
   <button class="tab-btn" data-tab="data">DATA</button>
+  <button class="tab-btn" data-tab="sizer">TRIP SIZER</button>
 </nav>
 
 <section class="tab-panel" id="tab-paste">
@@ -1902,14 +1910,41 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     return begun.length ? begun[begun.length - 1] : scored[scored.length - 1];
   }
 
+  /* Month picker (Ramon, 2026-09-20): the hero and the chart follow a chosen
+   * month. Default = the month in progress; any month that has STARTED can be
+   * chosen; a future or unknown choice falls back to the default. */
+  function hasBegun(x, todayStr) {
+    return (x.m.start || x.m.bid_period + '-01') <= todayStr;
+  }
+  function pickMonth(scored, wanted, todayStr) {
+    if (wanted) {
+      const hit = scored.find((x) => x.m.bid_period === wanted && hasBegun(x, todayStr));
+      if (hit) return hit;
+    }
+    return heroMonth(scored, todayStr);
+  }
+
   function render(container, months, opts) {
     opts = opts || {};
     container.textContent = '';
     const sorted = months.slice().sort((a, b) => a.bid_period.localeCompare(b.bid_period));
     const scored = sorted.map((m) => ({ m, s: E.scorecard(m) }));
+    const todayStr = opts.todayStr || E.fmtDate(Date.now());
 
-    // ---- hero: latest month in progress ----
-    const latest = heroMonth(scored, opts.todayStr || E.fmtDate(Date.now()));
+    // ---- month picker: current + previous months, default = month in progress ----
+    const latest = pickMonth(scored, opts.selected, todayStr);
+    const choosable = scored.filter((x) => hasBegun(x, todayStr));
+    if (choosable.length > 1) {
+      const chips = el('div', 'sc-month-chips');
+      for (const x of choosable) {
+        const b = el('button', 'chip' + (latest && x.m.bid_period === latest.m.bid_period ? ' on' : ''), x.m.bid_period);
+        b.onclick = () => render(container, months, Object.assign({}, opts, { selected: x.m.bid_period }));
+        chips.appendChild(b);
+      }
+      container.appendChild(chips);
+    }
+
+    // ---- hero: the chosen month (default: latest month in progress) ----
     if (latest) {
       const hero = el('div', 'sc-hero');
       hero.appendChild(el('div', 'sc-hero-label',
@@ -1928,7 +1963,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     }
 
     // ---- trend chart: the year at a glance, prior year ghosted behind ----
-    if (scored.length) container.appendChild(trendChart(scored));
+    if (scored.length) container.appendChild(trendChart(scored, latest ? latest.m.bid_period : null));
 
     // ---- season groups (by calendar year of bid period; newest first) ----
     const years = {};
@@ -2021,12 +2056,14 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
    * dashed faint lines = prior year; bright dashed rule = the 1.00 benchmark. */
   const METRICS = [['pay', 'PAY', '#E5C33C'], ['offense', 'O', '#3E9E6B'], ['defense', 'D', '#6FBCDE']];
 
-  function trendChart(scored) {
+  function trendChart(scored, focus) {
     const byYm = {};
     for (const x of scored) if (!x.m.excluded) byYm[x.m.bid_period] = x;
     const yrs = Array.from(new Set(scored.map((x) => x.m.bid_period.slice(0, 4)))).sort();
-    const cur = yrs[yrs.length - 1];
-    const prev = yrs.length > 1 ? yrs[yrs.length - 2] : null;
+    // the chosen month's year is the solid line; the year before it is the ghost
+    const cur = focus && yrs.includes(focus.slice(0, 4)) ? focus.slice(0, 4) : yrs[yrs.length - 1];
+    const prev = yrs.includes(String(+cur - 1)) ? String(+cur - 1) : null;
+    const focusI = focus && focus.slice(0, 4) === cur ? +focus.slice(5, 7) - 1 : -1;
     const MN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
     // value domain across both years, snapped to 0.25s, always including 1.00
@@ -2111,12 +2148,21 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
           }
         }
       }
+      if (focusI >= 0) {
+        // the chosen month: a soft column behind the plot, a marker line on top
+        const hw = pw / 24;
+        s += '<rect x="' + p2(xi(focusI) - hw) + '" y="' + T + '" width="' + p2(2 * hw) + '" height="' + ph +
+          '" fill="#E8EAF0" opacity="0.07"/>';
+        s += '<line x1="' + p2(xi(focusI)) + '" y1="' + T + '" x2="' + p2(xi(focusI)) + '" y2="' + (T + ph) +
+          '" stroke="#E8EAF0" stroke-width="1" stroke-dasharray="3 3" opacity="0.55"/>';
+      }
       s += '</g><g id="rt-hud"></g>';
       box.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg" ' +
         'xmlns:xlink="http://www.w3.org/1999/xlink" role="img">' + s + '</svg>';
       wrap.classList.toggle('expanded', expanded);
       hint.textContent = expanded ? 'tap title to shrink' : 'tap to enlarge';
-      readout.textContent = expanded ? 'touch & hold the chart — the lens follows your finger' : '';
+      readout.textContent = expanded ? 'touch & hold the chart — the lens follows your finger'
+        : (focusI >= 0 ? readoutFor(focusI) : '');
       if (expanded) attachLens();
     }
 
@@ -2160,7 +2206,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
       const clear = () => {
         hud.innerHTML = '';
         clipc.setAttribute('cx', -200); clipc.setAttribute('cy', -200);
-        readout.textContent = 'touch & hold the chart — the lens follows your finger';
+        readout.textContent = focusI >= 0 ? readoutFor(focusI) : 'touch & hold the chart — the lens follows your finger';
       };
       svg.addEventListener('pointerdown', (e) => { try { svg.setPointerCapture(e.pointerId); } catch (x) {} show(e); });
       svg.addEventListener('pointermove', (e) => { if (e.pointerType !== 'mouse' && !e.buttons) return; show(e); });
@@ -2192,7 +2238,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     return td;
   }
 
-  const Scorecard = { render, yoyDeltas, fDelta, heroMonth, isEmptyFutureMonth };
+  const Scorecard = { render, yoyDeltas, fDelta, heroMonth, isEmptyFutureMonth, pickMonth };
   if (typeof module !== 'undefined' && module.exports) module.exports = Scorecard;
   global.Scorecard = Scorecard;
 })(typeof window !== 'undefined' ? window : globalThis);
