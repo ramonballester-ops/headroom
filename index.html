@@ -345,7 +345,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<script type="application/json" id="build-info">{"built":"2026-09-15T20:20:27.982Z","shell":true}</script>
+<script type="application/json" id="build-info">{"built":"2026-09-20T19:42:14.324Z","shell":true}</script>
 <script type="application/json" id="data-legs">[]</script>
 <script type="application/json" id="data-days">[]</script>
 <script type="application/json" id="data-months">[]</script>
@@ -701,8 +701,11 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
    * FINAL statement gave D = 1.00), and the ten pulled 320A reserve schedules
    * all print exactly their guarantee. A filled footer must never erode D —
    * the Time Card / Pay Statement own DEFENSE after month end. */
-  function scheduleCreditUsable(actCredMinutes, guaranteeMinutes, periodEnd, todayStr) {
+  function scheduleCreditUsable(actCredMinutes, guaranteeMinutes, periodEnd, todayStr, periodStart) {
     if (actCredMinutes == null) return { usable: false, reason: 'no ACT CRED' };
+    // A future bid period prints ACT CRED 0:00 because nothing has been flown yet.
+    // Banking that 0 invented an Oct 2026 scorecard month in mid-September (2026-09-17).
+    if (periodStart && todayStr && todayStr < periodStart) return { usable: false, reason: 'bid period has not started — nothing earned yet' };
     if (periodEnd && todayStr && todayStr > periodEnd) return { usable: false, reason: 'period over — footer is the guarantee fill; paste the Time Card' };
     if (guaranteeMinutes && actCredMinutes >= guaranteeMinutes) return { usable: false, reason: 'ACT CRED at/above guarantee — fill, not earned credit' };
     return { usable: true, reason: 'period open — earned credit' };
@@ -864,6 +867,24 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
   const MON = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
   const OFF_TYPE = { '**': 'GOLDEN', 'XX': 'XX', 'PB': 'PB', 'PR': 'PR' };
 
+  /* STAT column — the company's posted status/absence code for the day (SVAC,
+   * PVAC, 30WD, MLOA, ...). It was never read before 2026-09-17: a STAT day with a
+   * blank OFF column and DES = RES fell straight through to the RES->LC assumption,
+   * so a posted vacation week rendered as baby-blue long-call days instead of
+   * vacation. Only codes whose day type is KNOWN are mapped here;
+   * anything else keeps its old typing and raises one import warning per code
+   * rather than being guessed at.
+   * §2.129 hard days = vacation, APD, PD, ALPA, legal duty, MLOA, golden
+   * (reference/pwa-notes.md) — the vacation family is the part we can type today. */
+  const STAT_TYPE = {
+    PVAC: 'VAC', SVAC: 'VAC', TVAC: 'VAC',
+    SICK: 'SICK', PJRY: 'PJRY', ADJ: 'ADJ'
+  };
+  const STAT_LABEL = {
+    PVAC: 'primary vacation', SVAC: 'secondary vacation', TVAC: 'vacation (TVAC)',
+    SICK: 'sick', PJRY: 'paid jury duty', ADJ: 'schedule adjustment'
+  };
+
   // Official iCrew reason codes (legend captured from the crew portal 2026-08-19).
   // The premium-capture categories that matter here are G / F / H.
   // Blank on an assigned rotation = normal reserve assignment — works against
@@ -967,6 +988,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     };
 
     const days = [];
+    const unknownStats = new Map();   // code -> day rows, so one code warns once, not 7 times
     let curRotation = null;
     let curDate = start;
 
@@ -996,6 +1018,11 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
       const blkn = field(padded, 'BLKN');
       const des = field(padded, 'DES');
       const el = field(padded, 'EL');
+      // STAT's slice ends on the ROT1 "." prefix column, so a trailing dot belongs to
+      // the rotation; a dot BEFORE the code lands in OFF (".") — same posted marker.
+      const statRaw = field(padded, 'STAT1');
+      const stat = statRaw.replace(/^\./, '').replace(/\.$/, '').trim();
+      const statDot = /^\./.test(statRaw) || off === '.';
 
       let slipDot = false;
       if (rotRaw && rotRaw !== '----') {
@@ -1011,6 +1038,9 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
         entry.type = 'TRIP';
         entry.rotation = curRotation;
         if (OFF_TYPE[off]) entry.overlay = OFF_TYPE[off];
+      } else if (STAT_TYPE[stat]) {
+        entry.type = STAT_TYPE[stat];          // a posted status beats the RES -> LC assumption
+        if (OFF_TYPE[off]) entry.overlay = OFF_TYPE[off];
       } else if (OFF_TYPE[off]) {
         entry.type = OFF_TYPE[off];
       } else if (des === 'RES') {
@@ -1019,14 +1049,25 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
         entry.type = 'LC';
         warnings.push(dte + ': DES "' + des + '" not RES — typed as LC, verify');
       }
+      if (stat) {
+        entry.stat = stat;
+        if (!STAT_TYPE[stat] && !onTrip) {
+          if (!unknownStats.has(stat)) unknownStats.set(stat, []);
+          unknownStats.get(stat).push(dte + ' (' + entry.type + ')');
+        }
+      }
       if (rest) {
         if (!entry.overlay) entry.overlay = 'REST';
         else entry.note = (entry.note ? entry.note + ' · ' : '') + 'REST';
       }
       const bits = [];
+      if (stat) bits.push('STAT ' + stat + ' — ' + (STAT_LABEL[stat] || 'code not in the day-type legend, verify'));
+      if (statDot) bits.push('"." prefix on the status code (posted, meaning unconfirmed)');
       if (rpt) bits.push('report ' + rpt);
       if (blkn) bits.push('BLKN ' + blkn + ' (arrival-station local — not ET)');
-      if (r1) {
+      if (r1 === '*') {
+        bits.push('* — acknowledged');       // status rows carry "*" here, not a reason code
+      } else if (r1) {
         entry.reason = r1;
         bits.push('reason ' + r1 + ' — ' + (REASON[r1] || 'UNKNOWN CODE, check legend'));
       } else if (onTrip) {
@@ -1037,6 +1078,10 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
       if (slipDot) bits.push('"." prefix on rotation (meaning unconfirmed)');
       if (bits.length) entry.note = (entry.note ? entry.note + ' · ' : '') + bits.join(' · ');
       days.push(entry);
+    }
+    for (const [code, rowsSeen] of unknownStats) {
+      warnings.push('STAT code "' + code + '" is not in the day-type legend — ' + rowsSeen.join(', ')
+        + ' kept the default typing, verify before trusting those days');
     }
     if (!days.length) throw new Error('No day rows parsed — paste the whole screen including the column header.');
 
@@ -1829,6 +1874,34 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     return td;
   }
 
+  /* A provisional month record for a bid period that has NOT STARTED and carries no
+   * numbers is an artifact of pasting a future schedule — the 2026-09-17 bug, where
+   * the October paste minted an empty Oct record and the hero jumped to it in
+   * mid-September and showed three dashes. app.js drops these on load, so a phone
+   * that already took the bad paste heals itself on the next build. Anything holding
+   * a real number is left alone — and note the artifact's tell is res_credit_minutes
+   * ZERO, which is why a falsy check is right here: a future period cannot have a
+   * Time Card, so a 0 there is the empty footer, never a measured month. */
+  const MONTH_NUMBER_KEYS = ['alv_minutes', 'guarantee_minutes', 'pay_hours_minutes',
+    'premium_minutes', 'baseline_minutes', 'sick_minutes'];
+  function isEmptyFutureMonth(m, todayStr) {
+    if (!m || m.status !== 'provisional') return false;
+    if ((m.start || m.bid_period + '-01') <= todayStr) return false;
+    if (m.ratios || m.pay_stmt_meta || m.note || m.res_credit_minutes) return false;
+    return MONTH_NUMBER_KEYS.every((k) => m[k] == null);
+  }
+
+  /* The hero card shows the month IN PROGRESS — and "in progress" means STARTED.
+   * Pasting a bid period that has not started yet used to move the hero onto a
+   * month with no numbers in it and blank the card (fixed 2026-09-17).
+   * A future month still appears in the season table; it just never takes the hero.
+   * Takes/returns the {m, s} pairs render() already built; exported for the tests. */
+  function heroMonth(scored, todayStr) {
+    if (!scored.length) return null;
+    const begun = scored.filter((x) => (x.m.start || x.m.bid_period + '-01') <= todayStr);
+    return begun.length ? begun[begun.length - 1] : scored[scored.length - 1];
+  }
+
   function render(container, months, opts) {
     opts = opts || {};
     container.textContent = '';
@@ -1836,7 +1909,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     const scored = sorted.map((m) => ({ m, s: E.scorecard(m) }));
 
     // ---- hero: latest month in progress ----
-    const latest = scored[scored.length - 1];
+    const latest = heroMonth(scored, opts.todayStr || E.fmtDate(Date.now()));
     if (latest) {
       const hero = el('div', 'sc-hero');
       hero.appendChild(el('div', 'sc-hero-label',
@@ -2119,7 +2192,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     return td;
   }
 
-  const Scorecard = { render, yoyDeltas, fDelta };
+  const Scorecard = { render, yoyDeltas, fDelta, heroMonth, isEmptyFutureMonth };
   if (typeof module !== 'undefined' && module.exports) module.exports = Scorecard;
   global.Scorecard = Scorecard;
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -2547,6 +2620,9 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
         }
       }
     } catch (e) { /* file:// on iOS may deny localStorage — export is the real persistence */ }
+    // self-heal: drop empty future month records left by an older build (2026-09-17)
+    const todayStr = E.fmtDate(Date.now());
+    store.months = store.months.filter((m) => !window.Scorecard.isEmptyFutureMonth(m, todayStr));
   }
 
   let staleOverlayNote = '';
@@ -2720,7 +2796,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
       '<span class="gap"></span>' +
       '<span><i style="background:#1B3E77"></i>TRIP</span>' +
       '<span><i style="background:#6FBCDE"></i>LC/PB/REST/PJRY</span>' +
-      '<span><i style="background:#8B7C4E"></i>XX/**</span>';
+      '<span><i style="background:#8B7C4E"></i>XX/**/VAC</span>';
     host.appendChild(legend);
   }
 
@@ -2846,7 +2922,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     legend.innerHTML =
       '<span><i style="background:#6C51B4"></i>submission deadline</span>' +
       '<span><i style="background:#2C3444"></i>info day</span>' +
-      '<span><i style="background:#8B7C4E"></i>your X/** days</span>' +
+      '<span><i style="background:#8B7C4E"></i>your X/**/VAC days</span>' +
       '<span><i style="background:#6FBCDE"></i>your LC/PB/REST</span>' +
       '<span><i style="background:#E5C33C"></i>NEXT deadline</span>' +
       '<span><i style="background:#3E9E6B"></i>earliest movable X-day</span>' +
@@ -3450,19 +3526,24 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     if (r.kind === 'pay-statement') { applyPayStmt(r); return; }
     if (r.kind === 'rotation') { applyRotation(r); return; }
     store.days = window.ICrew.mergeDays(store.days, r);
-    // reserve credit → provisional scorecard record (closed months are never touched)
+    // reserve credit → provisional scorecard record (closed months are never touched).
+    // The record is created ONLY when the credit is usable: a future bid period prints
+    // ACT CRED 0:00, and banking it used to mint an empty scorecard month (2026-09-17).
     if (r.meta.act_cred_minutes != null) {
       let m = store.months.find((x) => x.bid_period === r.bid_period);
-      if (!m) {
-        m = { bid_period: r.bid_period, label: monthLabel(r.bid_period), start: r.start, end: r.end, status: 'provisional', excluded: false };
-        store.months.push(m);
-        store.months.sort((a, b) => a.bid_period.localeCompare(b.bid_period));
-      }
       const bpRec = (store.bidPeriods || []).find((p) => p.bid_period === r.bid_period) || {};
-      const guar = m.guarantee_minutes || bpRec.guarantee_minutes || m.baseline_minutes || null;
-      const ok = E.scheduleCreditUsable(r.meta.act_cred_minutes, guar, r.end, E.fmtDate(Date.now()));
-      if (m.status !== 'closed' && ok.usable) m.res_credit_minutes = r.meta.act_cred_minutes;
-      else if (m.status !== 'closed') scheduleCreditNote = 'reserve credit NOT taken from this schedule (' + ok.reason + ')';
+      const guar = (m && (m.guarantee_minutes || m.baseline_minutes)) || bpRec.guarantee_minutes || null;
+      const ok = E.scheduleCreditUsable(r.meta.act_cred_minutes, guar, r.end, E.fmtDate(Date.now()), r.start);
+      if (!ok.usable) {
+        if (!m || m.status !== 'closed') scheduleCreditNote = 'reserve credit NOT taken from this schedule (' + ok.reason + ')';
+      } else {
+        if (!m) {
+          m = { bid_period: r.bid_period, label: monthLabel(r.bid_period), start: r.start, end: r.end, status: 'provisional', excluded: false };
+          store.months.push(m);
+          store.months.sort((a, b) => a.bid_period.localeCompare(b.bid_period));
+        }
+        if (m.status !== 'closed') m.res_credit_minutes = r.meta.act_cred_minutes;
+      }
     }
     persist();
     const fails = runGates();

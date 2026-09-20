@@ -1,5 +1,5 @@
 // ROLLING THUNDER service worker — makes the installed app fully offline.
-const CACHE = 'rt-2026-09-15T20:20:27.982Z';
+const CACHE = 'rt-2026-09-20T19:42:14.324Z';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-512.png'];
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
