@@ -353,7 +353,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<script type="application/json" id="build-info">{"built":"2026-09-20T22:16:08.776Z","shell":true}</script>
+<script type="application/json" id="build-info">{"built":"2026-09-21T00:37:26.136Z","shell":true}</script>
 <script type="application/json" id="data-legs">[]</script>
 <script type="application/json" id="data-days">[]</script>
 <script type="application/json" id="data-months">[]</script>
@@ -885,11 +885,12 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
    * §2.129 hard days = vacation, APD, PD, ALPA, legal duty, MLOA, golden
    * (reference/pwa-notes.md) — the vacation family is the part we can type today. */
   const STAT_TYPE = {
-    PVAC: 'VAC', SVAC: 'VAC', TVAC: 'VAC',
+    PVAC: 'VAC', SVAC: 'VAC', TVAC: 'VAC', IVD: 'VAC',
     SICK: 'SICK', PJRY: 'PJRY', ADJ: 'ADJ'
   };
   const STAT_LABEL = {
     PVAC: 'primary vacation', SVAC: 'secondary vacation', TVAC: 'vacation (TVAC)',
+    IVD: 'individual vacation day', // a vacation day pulled forward into the month (2/yr)
     SICK: 'sick', PJRY: 'paid jury duty', ADJ: 'schedule adjustment'
   };
 
