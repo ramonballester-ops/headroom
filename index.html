@@ -354,7 +354,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<script type="application/json" id="build-info">{"built":"2026-11-23T04:16:58.391Z","shell":true}</script>
+<script type="application/json" id="build-info">{"built":"2026-11-23T04:35:05.676Z","shell":true}</script>
 <script type="application/json" id="data-legs">[]</script>
 <script type="application/json" id="data-days">[]</script>
 <script type="application/json" id="data-months">[]</script>
@@ -921,13 +921,14 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
   const STAT_TYPE = {
     PVAC: 'VAC', SVAC: 'VAC', TVAC: 'VAC', IVD: 'VAC',
     SICK: 'SICK', PJRY: 'PJRY', ADJ: 'ADJ',
+    SC00: 'SC', SC01: 'SC', SC02: 'SC',   // pre-posted short calls on the award (Ramon, 2026-11-22)
     SCC: 'SC'   // short-call conversion — the CALL column carries the window start (".1000"); orange on the calendar (Ramon, 2026-11-22: 9–11 Nov were painting as LC)
   };
   const STAT_LABEL = {
     PVAC: 'primary vacation', SVAC: 'secondary vacation', TVAC: 'vacation (TVAC)',
     IVD: 'individual vacation day', // a vacation day pulled forward into the month (2/yr)
     SICK: 'sick', PJRY: 'paid jury duty', ADJ: 'schedule adjustment',
-    SCC: 'short call'
+    SCC: 'short call', SC00: 'short call (pre-posted)', SC01: 'short call (pre-posted)', SC02: 'short call (pre-posted)'
   };
 
   // Official iCrew reason codes (legend captured from the crew portal 2026-08-19).
@@ -1688,7 +1689,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
    * here without a re-paste (Ramon, 2026-11-22: October short calls read LC
    * while November's read SC — "stay consistent"). Pure; idempotent. */
   function migrateDays(days) {
-    return (days || []).map((d) => (d && d.type === 'LC' && d.stat === 'SCC') ? Object.assign({}, d, { type: 'SC' }) : d);
+    return (days || []).map((d) => (d && d.type === 'LC' && /^SC(C|0[0-2])$/.test(d.stat || '')) ? Object.assign({}, d, { type: 'SC' }) : d);
   }
 
   // Dispatcher — sniffs which iCrew screen was pasted.
