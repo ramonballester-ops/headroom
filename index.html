@@ -353,7 +353,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<script type="application/json" id="build-info">{"built":"2026-11-23T03:41:39.853Z","shell":true}</script>
+<script type="application/json" id="build-info">{"built":"2026-11-23T03:45:29.958Z","shell":true}</script>
 <script type="application/json" id="data-legs">[]</script>
 <script type="application/json" id="data-days">[]</script>
 <script type="application/json" id="data-months">[]</script>
@@ -825,6 +825,23 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     return out;
   }
 
+  /* Should DATE be drawn as a landing day? Only when the rotation actually
+   * ENDS that day (Ramon, 2026-11-22: a pendant means partial work then off —
+   * never a trip in progress). LANDING = landingDays(legs)[date]; REC = the
+   * schedule's record for the date; NEXT = the record for the day after.
+   * - no landing from the legs → no.
+   * - the schedule shows the same rotation continuing tomorrow → no (the log
+   *   may be incomplete, or the trip has more days — paint it full navy).
+   * - otherwise yes; repaint = the day was typed TRIP (show its overlay code
+   *   instead); a day typed LC/XX/… keeps its own color and just gets the tip. */
+  function landingState(landing, rec, next) {
+    if (!landing) return { landing: false, repaint: false };
+    const continues = !!(next && next.type === 'TRIP' && (next.rotation || null) === landing.rotation);
+    if (continues) return { landing: false, repaint: false };
+    const repaint = !!(rec && rec.type === 'TRIP' && (!rec.rotation || rec.rotation === landing.rotation));
+    return { landing: true, repaint };
+  }
+
   /* ---------- rail color bands (render spec) ---------- */
   function band(headroomMinutes) {
     if (headroomMinutes < 600) return '#D1352B';    // < 10:00
@@ -839,7 +856,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     fmtHM, fmtClock, fmtDate, isoInTZ, parseHM,
     countable, rollingAt, headroomAt,
     daySegments, peakWalk, scorecard, guaranteeFromALV,
-    sanityGates, band, removeRotationLegs, legOverlaps, landingDays, scheduleCreditUsable
+    sanityGates, band, removeRotationLegs, legOverlaps, landingDays, scheduleCreditUsable, landingState
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = Engine;
@@ -1731,9 +1748,10 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     // departing yesterday — paint the day in its OWN code's color (the
     // overlay the parser kept, e.g. XX/PB) and tip the trip bar into it
     if (!ctx._landings) ctx._landings = E.landingDays(ctx.legs);
-    const land = ctx._landings[dateStr];
+    const ls = E.landingState(ctx._landings[dateStr], rec0, ctx.daysByDate[E.addDays(dateStr, 1)]);
+    const land = ls.landing ? ctx._landings[dateStr] : null;
     let rec = rec0;
-    if (land && rec0 && rec0.type === 'TRIP' && (!rec0.rotation || rec0.rotation === land.rotation)) {
+    if (ls.repaint) {
       rec = rec0.overlay ? Object.assign({}, rec0, { type: rec0.overlay, overlay: undefined, rotation: undefined }) : null;
     }
 
