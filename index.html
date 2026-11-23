@@ -354,7 +354,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<script type="application/json" id="build-info">{"built":"2026-11-23T03:58:35.951Z","shell":true}</script>
+<script type="application/json" id="build-info">{"built":"2026-11-23T04:05:26.576Z","shell":true}</script>
 <script type="application/json" id="data-legs">[]</script>
 <script type="application/json" id="data-days">[]</script>
 <script type="application/json" id="data-months">[]</script>
@@ -1644,6 +1644,41 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     return kept.concat(incoming).sort((a, b) => a.date.localeCompare(b.date));
   }
 
+  /* A pasted rotation is reality for the days it occupies (Ramon, 2026-11-22:
+   * "the complete rotation should be manifest on the calendar"). Every date
+   * from the first departure to the final block-in becomes a TRIP day of that
+   * rotation; the day's previous code (LC/XX/PB/REST…) survives as the overlay
+   * so the landing day still renders as partial work + its own color. A later
+   * Pilot Schedule paste re-types the span from the schedule as usual. */
+  const OVERLAYABLE = { LC: 1, XX: 1, GOLDEN: 1, PB: 1, PR: 1, REST: 1, SC: 1, ADJ: 1, VAC: 1, SICK: 1, PJRY: 1 };
+  function mergeRotationDays(existing, parsed) {
+    const legs = (parsed.legs || []).filter((l) => l.block_in != null);
+    if (!legs.length) return existing;
+    let first = null, last = null;
+    for (const l of legs) {
+      const inMs = E.blockInMs(l), outMs = inMs - (l.block_minutes || 0) * 60000;
+      if (first == null || outMs < first) first = outMs;
+      if (last == null || inMs > last) last = inMs;
+    }
+    const byDate = {};
+    for (const d of existing) byDate[d.date] = d;
+    const out = existing.slice();
+    for (let ds = E.fmtDate(first); ds <= E.fmtDate(last); ds = E.addDays(ds, 1)) {
+      const old = byDate[ds];
+      if (old && old.type === 'TRIP' && old.rotation === parsed.rotation) continue;
+      const rec = { date: ds, type: 'TRIP', rotation: parsed.rotation, source: 'rotation-paste',
+        bid_period: (old && old.bid_period) || legs[0].bid_period };
+      if (old) {
+        if (old.type === 'TRIP') rec.note = 'was ' + (old.rotation || 'TRIP') + ' on the schedule — rotation paste ' + parsed.rotation + ' now covers this day';
+        else if (OVERLAYABLE[old.type]) rec.overlay = old.type;
+        if (old.overlay && !rec.overlay) rec.overlay = old.overlay;
+        if (old.note) rec.note = (rec.note ? rec.note + ' · ' : '') + old.note;
+      }
+      if (old) out[out.indexOf(old)] = rec; else out.push(rec);
+    }
+    return out.sort((a, b) => a.date.localeCompare(b.date));
+  }
+
   // Dispatcher — sniffs which iCrew screen was pasted.
   function parse(text, ctx) {
     if (/MONTHLY TIME DATA/.test(text)) return parseMonthlyTimeData(text);
@@ -1653,7 +1688,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     throw new Error('Unrecognized paste — supported screens: Current Schedule (PILOT SCHEDULE), Time Card (MONTHLY TIME DATA), Pay Statement (DISPLAY PILOT PAY STATEMENT), Rotation print (ROTATION OPER).');
   }
 
-  const ICrew = { parse, parseCurrentSchedule, parseMonthlyTimeData, parsePayStatement, parseRotation, mergeLegs, auditRotations, mergeDays, hhDotMM, parseDDMMMYY, AIRPORT_TZ };
+  const ICrew = { parse, parseCurrentSchedule, parseMonthlyTimeData, parsePayStatement, parseRotation, mergeLegs, auditRotations, mergeDays, mergeRotationDays, hhDotMM, parseDDMMMYY, AIRPORT_TZ };
   if (typeof module !== 'undefined' && module.exports) module.exports = ICrew;
   global.ICrew = ICrew;
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -3562,6 +3597,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
   function applyRotation(r) {
     const merged = window.ICrew.mergeLegs(store.legs, r);
     store.legs = merged.legs;
+    store.days = window.ICrew.mergeRotationDays(store.days, r);   // the rotation IS the day's reality for its span
     persist();
     const fails = runGates();
     renderAll();
