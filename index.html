@@ -353,7 +353,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<script type="application/json" id="build-info">{"built":"2026-09-21T00:37:26.136Z","shell":true}</script>
+<script type="application/json" id="build-info">{"built":"2026-11-23T03:41:39.853Z","shell":true}</script>
 <script type="application/json" id="data-legs">[]</script>
 <script type="application/json" id="data-days">[]</script>
 <script type="application/json" id="data-months">[]</script>
@@ -1325,7 +1325,11 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     //            " 22   174  ATL 1820 MXP 0925    9.05"      (Rotation Display — space arrival)
     //            "  6 D 104  GRU 2245 ATL.0703   9.18 0.23"  (deadhead — T col 'D',
     //             which prints BEFORE the flight number despite the header order)
-    const legRe = /^\s*(\d{1,2})\s+(?:([A-Z])\s+)?(\d{1,4})\s+(?:([A-Z])\s+)?([A-Z]{3})\s+(\d{4})\s+([A-Z]{3})[.\s]\s*(\d{4})\s+(\d{1,2})\.(\d{2})(?:\s+(\d{1,2})\.(\d{2}))?/;
+    //            " 12 D2583  ATL 2057 PIT.2233   1.36 0.03"  (deadhead, T col GLUED to a
+    //             4-digit flight number — 0642, Nov 2026)
+    //            " 13   157 *PIT 0251 JFK.0421   1.30"       (asterisk before the departure
+    //             station — meaning unconfirmed; kept as leg.star, never blocks the parse)
+    const legRe = /^\s*(\d{1,2})\s+(?:([A-Z])\s*)?(\d{1,4})\s+(?:([A-Z])\s+)?(\*)?([A-Z]{3})\s+(\d{4})\s+([A-Z]{3})[.\s]\s*(\d{4})\s+(\d{1,2})\.(\d{2})(?:\s+(\d{1,2})\.(\d{2}))?/;
     const legs = [];
     let [year, month] = effective.split('-').map(Number);
     let prevDay = +effective.split('-')[2];
@@ -1338,16 +1342,18 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
       prevDay = day;
       const tCode = m[2] || m[4] || null;
       const flt = m[3];
+      const star = !!m[5];
       const depDate = year + '-' + pad2(month) + '-' + pad2(day);
-      const dep = m[5], arr = m[7];
-      const depMin = Math.floor(+m[6] / 100) * 60 + (+m[6] % 100);
-      const block = (+m[9]) * 60 + (+m[10]);
-      if (+m[10] > 59) { warnings.push('DL' + flt + ': block minutes ' + m[10] + ' > 59 — misread?'); }
+      const dep = m[6], arr = m[8];
+      const depMin = Math.floor(+m[7] / 100) * 60 + (+m[7] % 100);
+      const block = (+m[10]) * 60 + (+m[11]);
+      if (+m[11] > 59) { warnings.push('DL' + flt + ': block minutes ' + m[11] + ' > 59 — misread?'); }
+      if (star) warnings.push('DL' + flt + ': "*" printed before ' + dep + ' — marker meaning unconfirmed, leg parsed normally');
       const depEpoch = E.epochAt(depDate, depMin, tzForAirport(dep));
       const arrEpoch = depEpoch + block * 60000;
 
       // self-check: computed arrival must equal the printed arrival local time
-      const printedArr = pad2(Math.floor(+m[8] / 100)) + ':' + pad2(+m[8] % 100);
+      const printedArr = pad2(Math.floor(+m[9] / 100)) + ':' + pad2(+m[9] % 100);
       const computedArr = E.fmtClock(arrEpoch, tzForAirport(arr));
       if (computedArr !== printedArr) {
         warnings.push('DL' + flt + ' ' + dep + '-' + arr + ': computed arrival ' + computedArr + ' (' + arr + ' local) ≠ printed ' + printedArr + ' — check block/times/timezone');
@@ -1360,7 +1366,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
         deadhead: tCode === 'D',   // learned from U004: T column 'D' = deadhead
         actual: captureEpoch != null ? arrEpoch < captureEpoch : true,
         bid_period: bidPeriodForDate(E.fmtDate(arrEpoch), ctx && ctx.bidPeriods),
-        makeup_minutes: m[11] != null ? (+m[11]) * 60 + (+m[12]) : undefined,
+        makeup_minutes: m[12] != null ? (+m[12]) * 60 + (+m[13]) : undefined,
         t_code: tCode || undefined
       });
     }
