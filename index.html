@@ -354,7 +354,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<script type="application/json" id="build-info">{"built":"2026-11-23T04:05:26.576Z","shell":true}</script>
+<script type="application/json" id="build-info">{"built":"2026-11-23T04:10:14.440Z","shell":true}</script>
 <script type="application/json" id="data-legs">[]</script>
 <script type="application/json" id="data-days">[]</script>
 <script type="application/json" id="data-months">[]</script>
@@ -1679,6 +1679,15 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     return out.sort((a, b) => a.date.localeCompare(b.date));
   }
 
+  /* One-time repairs to day records saved by older builds. v1.6.4 taught the
+   * schedule parser that STAT "SCC" = short call; pastes before that typed
+   * those days LC but still saved the status code, so they can be retyped
+   * here without a re-paste (Ramon, 2026-11-22: October short calls read LC
+   * while November's read SC — "stay consistent"). Pure; idempotent. */
+  function migrateDays(days) {
+    return (days || []).map((d) => (d && d.type === 'LC' && d.stat === 'SCC') ? Object.assign({}, d, { type: 'SC' }) : d);
+  }
+
   // Dispatcher — sniffs which iCrew screen was pasted.
   function parse(text, ctx) {
     if (/MONTHLY TIME DATA/.test(text)) return parseMonthlyTimeData(text);
@@ -1688,7 +1697,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     throw new Error('Unrecognized paste — supported screens: Current Schedule (PILOT SCHEDULE), Time Card (MONTHLY TIME DATA), Pay Statement (DISPLAY PILOT PAY STATEMENT), Rotation print (ROTATION OPER).');
   }
 
-  const ICrew = { parse, parseCurrentSchedule, parseMonthlyTimeData, parsePayStatement, parseRotation, mergeLegs, auditRotations, mergeDays, mergeRotationDays, hhDotMM, parseDDMMMYY, AIRPORT_TZ };
+  const ICrew = { parse, parseCurrentSchedule, parseMonthlyTimeData, parsePayStatement, parseRotation, mergeLegs, auditRotations, mergeDays, mergeRotationDays, migrateDays, hhDotMM, parseDDMMMYY, AIRPORT_TZ };
   if (typeof module !== 'undefined' && module.exports) module.exports = ICrew;
   global.ICrew = ICrew;
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -2757,6 +2766,8 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     // self-heal: drop empty future month records left by an older build (2026-09-17)
     const todayStr = E.fmtDate(Date.now());
     store.months = store.months.filter((m) => !window.Scorecard.isEmptyFutureMonth(m, todayStr));
+    // self-heal: short-call days typed LC by pastes made before v1.6.4 (2026-11-22)
+    store.days = window.ICrew.migrateDays(store.days);
   }
 
   let staleOverlayNote = '';
