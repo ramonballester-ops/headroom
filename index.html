@@ -147,6 +147,7 @@ body {
                0 1px 2px rgba(0,0,0,0.5);
 }
 .seg-ev { font-size: 9px; opacity: 0.9; padding: 1px 0; }
+.seg-ev.dh { opacity: 0.55; font-style: italic; }  /* deadhead: visible, never counted */
 .day-note { font-size: 9px; opacity: 0.8; margin-top: 3px; }
 
 .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; color: var(--ink-dim); font-size: 11px; }
@@ -353,7 +354,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<script type="application/json" id="build-info">{"built":"2026-11-23T03:45:29.958Z","shell":true}</script>
+<script type="application/json" id="build-info">{"built":"2026-11-23T03:54:49.717Z","shell":true}</script>
 <script type="application/json" id="data-legs">[]</script>
 <script type="application/json" id="data-days">[]</script>
 <script type="application/json" id="data-months">[]</script>
@@ -809,20 +810,35 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
    * qualify — the trip is still going. Returns { 'YYYY-MM-DD': { rotation,
    * blockIn(epoch), flight } }. Deadheads count: the landing is physical. */
   function landingDays(legs) {
-    const finals = {};
+    // Rule (widened 2026-11-22, Ramon): the landing day is the date of the
+    // rotation's FINAL block-in whenever the rotation began on an earlier date
+    // — a multi-day trip ending at 09:53 is a partial-work day whether or not
+    // that last leg itself crossed midnight (0642: JFK 07:52 → ATL 09:53 on the
+    // 14th, trip started the 12th). A one-day turn never gets one.
+    const finals = {}, firsts = {};
     for (const l of legs || []) {
       if (!l.rotation || !l.block_in) continue;
       const b = blockInMs(l);
+      const o = b - (l.block_minutes || 0) * MIN_MS;
       if (!finals[l.rotation] || b > finals[l.rotation].b) finals[l.rotation] = { b, leg: l };
+      if (firsts[l.rotation] == null || o < firsts[l.rotation]) firsts[l.rotation] = o;
     }
     const out = {};
     for (const rot of Object.keys(finals)) {
       const { b, leg } = finals[rot];
-      const outMs = b - (leg.block_minutes || 0) * MIN_MS;
-      const dIn = fmtDate(b), dOut = fmtDate(outMs);
-      if (dIn > dOut) out[dIn] = { rotation: rot, blockIn: b, flight: leg.flight || '' };
+      const dIn = fmtDate(b), dFirst = fmtDate(firsts[rot]);
+      if (dIn > dFirst) out[dIn] = { rotation: rot, blockIn: b, flight: leg.flight || '' };
     }
     return out;
+  }
+
+  /* Deadhead legs blocking in on DATE (display zone). Deadheads never touch
+   * the 672h math (countable() drops them) but the pilot was still in a seat —
+   * the calendar marks them dimly so a deadhead home is visible (Ramon,
+   * 2026-11-22: "the deadhead on the 14th clearly appears on the rotation"). */
+  function deadheadsOn(legs, dateStr) {
+    return (legs || []).filter((l) => l.deadhead && l.block_in != null && fmtDate(blockInMs(l)) === dateStr)
+      .sort((a, b) => blockInMs(a) - blockInMs(b));
   }
 
   /* Should DATE be drawn as a landing day? Only when the rotation actually
@@ -856,7 +872,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
     fmtHM, fmtClock, fmtDate, isoInTZ, parseHM,
     countable, rollingAt, headroomAt,
     daySegments, peakWalk, scorecard, guaranteeFromALV,
-    sanityGates, band, removeRotationLegs, legOverlaps, landingDays, scheduleCreditUsable, landingState
+    sanityGates, band, removeRotationLegs, legOverlaps, landingDays, scheduleCreditUsable, landingState, deadheadsOn
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = Engine;
@@ -1814,6 +1830,11 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
           E.fmtClock(e.t) + ' ' + (e.kind === 'IN' ? '▼IN' : '▲OFF') + ' ' + e.leg.flight));
       }
     }
+    for (const dh of E.deadheadsOn(ctx.legs, dateStr)) {
+      const d = el('div', 'seg-ev dh', E.fmtClock(E.blockInMs(dh)) + ' ▼DH ' + dh.flight);
+      d.title = 'deadhead ' + dh.pair + ' — logged, not counted toward the cap';
+      stack.appendChild(d);
+    }
     body.appendChild(stack);
 
     if (rec && rec.note) {
@@ -1843,6 +1864,9 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
         amp.appendChild(el('div', 'amp-line', E.fmtClock(e.t) + (e.kind === 'IN'
           ? ' ▼ ' + e.leg.flight + ' blocks in (+' + E.fmtHM(e.leg.block_minutes) + ')'
           : ' ▲ ' + e.leg.flight + ' ages off (−' + E.fmtHM(e.leg.block_minutes) + ')')));
+      }
+      for (const dh of E.deadheadsOn(ctx.legs, dateStr)) {
+        amp.appendChild(el('div', 'amp-line amp-dim', E.fmtClock(E.blockInMs(dh)) + ' ▼ ' + dh.flight + ' deadhead ' + dh.pair + ' (' + E.fmtHM(dh.block_minutes) + ', not counted toward the cap)'));
       }
       if (land) amp.appendChild(el('div', 'amp-line', E.fmtClock(land.blockIn) + ' ▼ ' + land.rotation + ' lands — trip ends here; the day is yours from block-in'));
       if (rec && rec.note) amp.appendChild(el('div', 'amp-line amp-note', rec.note));
