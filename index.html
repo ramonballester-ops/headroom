@@ -354,7 +354,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<script type="application/json" id="build-info">{"built":"2026-11-23T04:13:00.476Z","shell":true}</script>
+<script type="application/json" id="build-info">{"built":"2026-11-23T04:16:58.391Z","shell":true}</script>
 <script type="application/json" id="data-legs">[]</script>
 <script type="application/json" id="data-days">[]</script>
 <script type="application/json" id="data-months">[]</script>
@@ -367,6 +367,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
   <span class="sub">FAR 117.23(b)(1) · 100:00 / 672:00 · display TZ America/New_York</span>
   <span class="sub" id="build-stamp"></span>
   <span id="overlay-flag"></span>
+  <button id="update-btn" class="btn" type="button" hidden style="font-size:10px;padding:2px 8px;margin-left:8px">check for update</button>
   <span class="spacer"></span>
   <button class="btn" id="export-btn">Export offline .html</button>
 </header>
@@ -3907,7 +3908,24 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 
     // offline engine — hosted shell only (no-op for the file:// personal build)
     if (isShell() && 'serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
-      navigator.serviceWorker.register('./sw.js').catch(() => {});
+      navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).catch(() => {});
+      // when a newer build's worker takes over, reload once so THIS launch runs it
+      let reloaded = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (reloaded) return; reloaded = true; location.reload();
+      });
+      const btn = $('update-btn');
+      if (btn) {
+        btn.hidden = false;
+        btn.onclick = async () => {
+          btn.textContent = 'checking…';
+          try {
+            const reg = await navigator.serviceWorker.getRegistration();
+            if (reg) await reg.update();
+            setTimeout(() => { if (!reloaded) { btn.textContent = 'up to date'; setTimeout(() => { btn.textContent = 'check for update'; }, 2500); } }, 4000);
+          } catch (e) { btn.textContent = 'check for update'; }
+        };
+      }
     }
   }
 
