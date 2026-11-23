@@ -354,7 +354,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
 <meta name="theme-color" content="#0F1115">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<script type="application/json" id="build-info">{"built":"2026-11-23T03:54:49.717Z","shell":true}</script>
+<script type="application/json" id="build-info">{"built":"2026-11-23T03:58:35.951Z","shell":true}</script>
 <script type="application/json" id="data-legs">[]</script>
 <script type="application/json" id="data-days">[]</script>
 <script type="application/json" id="data-months">[]</script>
@@ -919,12 +919,14 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
    * (reference/pwa-notes.md) — the vacation family is the part we can type today. */
   const STAT_TYPE = {
     PVAC: 'VAC', SVAC: 'VAC', TVAC: 'VAC', IVD: 'VAC',
-    SICK: 'SICK', PJRY: 'PJRY', ADJ: 'ADJ'
+    SICK: 'SICK', PJRY: 'PJRY', ADJ: 'ADJ',
+    SCC: 'SC'   // short-call conversion — the CALL column carries the window start (".1000"); orange on the calendar (Ramon, 2026-11-22: 9–11 Nov were painting as LC)
   };
   const STAT_LABEL = {
     PVAC: 'primary vacation', SVAC: 'secondary vacation', TVAC: 'vacation (TVAC)',
     IVD: 'individual vacation day', // a vacation day pulled forward into the month (2/yr)
-    SICK: 'sick', PJRY: 'paid jury duty', ADJ: 'schedule adjustment'
+    SICK: 'sick', PJRY: 'paid jury duty', ADJ: 'schedule adjustment',
+    SCC: 'short call'
   };
 
   // Official iCrew reason codes (legend captured from the crew portal 2026-08-19).
@@ -1060,6 +1062,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
       const blkn = field(padded, 'BLKN');
       const des = field(padded, 'DES');
       const el = field(padded, 'EL');
+      const call = field(padded, 'CALL').replace(/^\./, '');   // short-call window start, "1000"
       // STAT's slice ends on the ROT1 "." prefix column, so a trailing dot belongs to
       // the rotation; a dot BEFORE the code lands in OFF (".") — same posted marker.
       const statRaw = field(padded, 'STAT1');
@@ -1104,6 +1107,7 @@ tr.sc-avg td { border-top: 1px solid #2A3040; border-bottom: none; color: var(--
       }
       const bits = [];
       if (stat) bits.push('STAT ' + stat + ' — ' + (STAT_LABEL[stat] || 'code not in the day-type legend, verify'));
+      if (stat === 'SCC' && /^\d{4}$/.test(call)) bits.push('short call from ' + call.slice(0, 2) + ':' + call.slice(2));
       if (statDot) bits.push('"." prefix on the status code (posted, meaning unconfirmed)');
       if (rpt) bits.push('report ' + rpt);
       if (blkn) bits.push('BLKN ' + blkn + ' (arrival-station local — not ET)');
